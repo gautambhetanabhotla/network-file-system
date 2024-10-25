@@ -1,8 +1,8 @@
 #ifndef LRU_CACHE_H
 #define LRU_CACHE_H
 
-#define KEY_TYPE int
-#define VALUE_TYPE int
+typedef int KEY_TYPE;
+typedef int VALUE_TYPE;
 
 struct lru_cache_node {
     KEY_TYPE key;
