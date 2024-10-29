@@ -96,7 +96,7 @@ void *handle_client_connection(void *args){
 
     while ((bytes_received = recv(conn_info->client_socket, buffer, sizeof(buffer), 0)) > 0) {
         // Parse command and handle accordingly
-        // Implementation depends on your protocol design
+        //depends on protocol design
     }
 
     close(conn_info->client_socket);
