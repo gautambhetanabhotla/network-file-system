@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <dirent.h>
+#include <sys/stat.h>
 
 void *sender() {
 
@@ -23,6 +24,7 @@ int main(int argc, char* argv[]) {
             exit(1);
         }
     }
+    closedir(storage_dir);
 
     if(argc != 3) {
         fprintf(stderr, "Usage: %s <IP Address> <Port>\n", argv[0]);
