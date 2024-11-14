@@ -10,7 +10,6 @@ void *sender() {
 }
 
 void* listener() {
-=======
 #include <sys/stat.h>
 #include <pthread.h>
 
