@@ -1,5 +1,5 @@
 #include "naming-server.h"
-#include "../utils/cache.h"
+#include "cache.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,26 +12,8 @@ StorageServerInfo storage_servers[MAX_STORAGE_SERVERS];
 int ss_count = 0;
 pthread_mutex_t registry_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// LRU Cache for recent path lookups
-typedef struct CacheNode {
-    char path[MAX_PATH_LENGTH];
-    StorageServerInfo *ss_info;
-    struct CacheNode *prev;
-    struct CacheNode *next;
-} CacheNode;
-
-CacheNode *cache_head = NULL;
-CacheNode *cache_tail = NULL;
-int cache_size = 0;
 pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// Logging Function
-// void log_message(const char *format, ...) {
-//     va_list args;
-//     va_start(args, format);
-//     vprintf(format, args);
-//     va_end(args);
-// }
 
 // Send Error Message to Client
 void send_error(int socket_fd, ErrorCode code, const char *message) {
@@ -47,104 +29,6 @@ void send_ack(int socket_fd, const char *message) {
     send(socket_fd, buffer, strlen(buffer), 0);
 }
 
-// Update LRU Cache
-void update_cache(const char *path, StorageServerInfo *ss_info) {
-    pthread_mutex_lock(&cache_mutex);
-    // Check if path is already in cache
-    CacheNode *current = cache_head;
-    while (current) {
-        if (strcmp(current->path, path) == 0) {
-            // Move to front
-            if (current != cache_head) {
-                // Remove from current position
-                if (current->prev)
-                    current->prev->next = current->next;
-                if (current->next)
-                    current->next->prev = current->prev;
-                else
-                    cache_tail = current->prev;
-                // Insert at head
-                current->next = cache_head;
-                current->prev = NULL;
-                cache_head->prev = current;
-                cache_head = current;
-            }
-            pthread_mutex_unlock(&cache_mutex);
-            return;
-        }
-        current = current->next;
-    }
-    // Add new node to cache
-    CacheNode *new_node = (CacheNode *)malloc(sizeof(CacheNode));
-    strcpy(new_node->path, path);
-    new_node->ss_info = ss_info;
-    new_node->prev = NULL;
-    new_node->next = cache_head;
-    if (cache_head)
-        cache_head->prev = new_node;
-    cache_head = new_node;
-    if (!cache_tail)
-        cache_tail = new_node;
-    cache_size++;
-    // Remove least recently used if cache is full
-    if (cache_size > CACHE_SIZE) {
-        CacheNode *to_remove = cache_tail;
-        cache_tail = cache_tail->prev;
-        if (cache_tail)
-            cache_tail->next = NULL;
-        free(to_remove);
-        cache_size--;
-    }
-    pthread_mutex_unlock(&cache_mutex);
-}
-
-// Find Storage Server for Given Path
-StorageServerInfo *find_storage_server_for_path(const char *path) {
-    // Check Cache First
-    pthread_mutex_lock(&cache_mutex);
-    CacheNode *current = cache_head;
-    while (current) {
-        if (strcmp(current->path, path) == 0) {
-            StorageServerInfo *ss_info = current->ss_info;
-            // Move to front
-            if (current != cache_head) {
-                if (current->prev)
-                    current->prev->next = current->next;
-                if (current->next)
-                    current->next->prev = current->prev;
-                else
-                    cache_tail = current->prev;
-                current->next = cache_head;
-                current->prev = NULL;
-                cache_head->prev = current;
-                cache_head = current;
-            }
-            pthread_mutex_unlock(&cache_mutex);
-            return ss_info;
-        }
-        current = current->next;
-    }
-    pthread_mutex_unlock(&cache_mutex);
-    // Search Registry
-    pthread_mutex_lock(&registry_mutex);
-    for (int i = 0; i < ss_count; i++) {
-        StorageServerInfo *ss_info = &storage_servers[i];
-        pthread_mutex_lock(&ss_info->ss_mutex);
-        if (ss_info->is_active) {
-            for (int j = 0; j < ss_info->path_count; j++) {
-                if (strcmp(ss_info->paths[j], path) == 0) {
-                    pthread_mutex_unlock(&ss_info->ss_mutex);
-                    pthread_mutex_unlock(&registry_mutex);
-                    update_cache(path, ss_info);
-                    return ss_info;
-                }
-            }
-        }
-        pthread_mutex_unlock(&ss_info->ss_mutex);
-    }
-    pthread_mutex_unlock(&registry_mutex);
-    return NULL;
-}
 
 // Handle Storage Server Registration
 void *storage_server_handler(void *arg) {
@@ -193,7 +77,6 @@ void *storage_server_handler(void *arg) {
     // Send ACK
     send_ack(ss_socket, "Registration Successful");
     close(ss_socket);
-    // log_message("Storage Server %s registered with %d paths.\n", ss_info.ip_address, ss_info.path_count);
     pthread_exit(NULL);
 }
 
@@ -229,7 +112,6 @@ void *client_handler(void *arg) {
         }
         token = strtok(NULL, "\n");
     }
-    // log_message("Received request: OPERATION=%s PATH=%s\n", operation, path);
     // Process Request
     if (strcmp(operation, "READ") == 0 || strcmp(operation, "WRITE") == 0 ||
         strcmp(operation, "INFO") == 0 || strcmp(operation, "STREAM") == 0) {
@@ -240,7 +122,6 @@ void *client_handler(void *arg) {
             char response[MAX_MESSAGE_SIZE];
             snprintf(response, sizeof(response), "SS_IP:%s\nSS_PORT:%d\nEND\n", ss_info->ip_address, ss_info->client_port);
             send_ack(client_socket, response);
-            // log_message("Sent storage server details to client for path %s\n", path);
         } else {
             send_error(client_socket, ERR_FILE_NOT_FOUND, "File not found");
         }
@@ -272,7 +153,6 @@ void *client_handler(void *arg) {
                 ss_response[ss_bytes] = '\0';
                 // Forward ACK to Client
                 send(client_socket, ss_response, strlen(ss_response), 0);
-                // log_message("Forwarded response from SS to client.\n");
             }
             close(ss_socket);
         } else {
@@ -317,7 +197,6 @@ void initialize_naming_server(int ss_reg_port, int client_req_port) {
 
     bind(ss_reg_socket, (struct sockaddr *)&ss_reg_addr, sizeof(ss_reg_addr));
     listen(ss_reg_socket, 5);
-    //log_message("Naming Server listening for Storage Server registrations on port %d...\n", ss_reg_port);
 
     // Setup Client Request Socket
     client_req_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -327,7 +206,6 @@ void initialize_naming_server(int ss_reg_port, int client_req_port) {
 
     bind(client_req_socket, (struct sockaddr *)&client_req_addr, sizeof(client_req_addr));
     listen(client_req_socket, 5);
-    //log_message("Naming Server listening for client requests on port %d...\n", client_req_port);
 
     // Accept Connections in Separate Threads
     while (1) {
