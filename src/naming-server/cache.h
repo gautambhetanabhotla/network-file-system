@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "naming-server.h"
 
 #define MAX_LEN 1024
 #define CACHE_MAX_SIZE 10
