@@ -1,3 +1,5 @@
+#include "storage-server.h"
+
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -7,37 +9,11 @@
 #include <sys/stat.h>
 #include <pthread.h>
 #include <string.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <ifaddrs.h>
+#include <pthread.h>
 
 #define BACKLOG 100
 #define MAXPATHLENGTH 4096
 #define MAXFILENAMELENGTH 256
-
-struct vprp** vprp_entries = NULL;
-int n_vprp_entries = 0;
-
-struct vprp {
-    char *vpath, *rpath;
-};
-
-struct vprp* make_vprp_entry(char* vpath, char* rpath) {
-    struct vprp* entry = (struct vprp*)malloc(sizeof(struct vprp));
-    if(entry == NULL) {
-        perror("Memory allocation failed");
-        exit(1);
-    }
-    entry->vpath = strdup(vpath);
-    entry->rpath = strdup(rpath);
-    return entry;
-}
-
-void add_vprp_entry(char* vpath, char* rpath) {
-    struct vprp* entry = make_vprp_entry(vpath, rpath);
-    vprp_entries = realloc(vprp_entries, sizeof(struct vprp*) * (n_vprp_entries + 1));
-    vprp_entries[n_vprp_entries++] = entry;
-}
 
 /*
 
@@ -64,6 +40,31 @@ WRITE
 */
 
 void* handle_client(void* arg) {
+    // fprintf(stderr, "EW$RFSVSFWEFSESF");
+    printf("RFVCVSFDDV");
+    int client_sockfd = *(int*)arg;
+    char buf[8192];
+    recv(client_sockfd, buf, sizeof(buf), 0);
+    char request_type[8192];
+    sscanf(buf, "%s", request_type);
+    if(strcmp(request_type, "READ") == 0) {
+        ss_read((void*)&client_sockfd);
+    }
+    else if(strcmp(request_type, "WRITE") == 0) {
+        ss_write((void*)&client_sockfd);
+    }
+    else if(strcmp(request_type, "CREATE") == 0) {
+        ss_create((void*)&client_sockfd);
+    }
+    else if(strcmp(request_type, "DELETE") == 0) {
+        ss_delete((void*)&client_sockfd);
+    }
+    else if(strcmp(request_type, "STREAM") == 0) {
+        ss_stream((void*)&client_sockfd);
+    }
+    else {
+        
+    }
     return NULL;
 }
 
@@ -94,6 +95,7 @@ int main(int argc, char* argv[]) {
     listen_addr.sin_family = AF_INET;
     listen_addr.sin_addr.s_addr = INADDR_ANY;
     int PORT = 3000;
+    listen_addr.sin_port = htons(PORT);
     while(bind(ss_sockfd, (struct sockaddr*)&listen_addr, sizeof(listen_addr)) < 0 && PORT < 65000) {
         // Error handling pending
         PORT++;
@@ -148,7 +150,7 @@ int main(int argc, char* argv[]) {
             fprintf(stderr, "Invalid paths file!\n");
             exit(1);
         }
-        add_vprp_entry(vpath, rpath);
+        add_file_entry(vpath, rpath);
         send(nm_sockfd, vpath, strlen(vpath), 0);
     }
     // End with "STOP,,," (commas cause file paths wont contain commas)
@@ -160,7 +162,7 @@ int main(int argc, char* argv[]) {
         pthread_t client_thread;
         int client_fd = accept(ss_sockfd, (struct sockaddr *)&client_addr, &client_len);
         pthread_create(&client_thread, NULL, handle_client, (void *)&client_fd);
-        pthread_detach(client_thread);
+        // pthread_detach(client_thread);
     }
     
     close(nm_sockfd);
