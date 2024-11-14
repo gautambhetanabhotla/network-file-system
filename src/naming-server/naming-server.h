@@ -45,6 +45,6 @@ void start_naming_server(NamingServer *ns);
 void destroy_naming_server(NamingServer *ns);
 void* handle_SS_connection(NamingServer *ns, int client_socket_fd);
 void* handle_client_connection(void *args);          
-int find_server_for_file(NamingServer *ns, const char *path); // Returns the server_id of the server that contains the file
+int find_server_for_file(NamingServer *ns, const char *path);   // Returns the server_id of the server that contains the file
 
 #endif
