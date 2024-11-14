@@ -4,7 +4,10 @@
 #ifndef LRU_CACHE_H
 #define LRU_CACHE_H
 
-typedef int KEY_TYPE;
+#define MAX_LEN 1024
+#define CACHE_MAX_SIZE 10
+
+typedef char KEY_TYPE[MAX_LEN];
 typedef int VALUE_TYPE;
 
 struct lru_cache_node {
@@ -23,5 +26,7 @@ struct lru_cache {
 };
 
 VALUE_TYPE cache_get(KEY_TYPE key, struct lru_cache *cache);
+
+void cache_put(KEY_TYPE key, VALUE_TYPE value, struct lru_cache *cache);
 
 #endif

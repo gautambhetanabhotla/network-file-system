@@ -8,7 +8,7 @@ VALUE_TYPE cache_get(KEY_TYPE key, struct lru_cache* cache) {
 
     //search for the key in cache 
     while(current != NULL) {
-        if(current->key == key) {
+        if(strcmp(current->key,key)==0) {
             //move the node to the front of the list
             if(current != cache->most_recently_used) {
                 if(current->prev) {
@@ -32,12 +32,15 @@ VALUE_TYPE cache_get(KEY_TYPE key, struct lru_cache* cache) {
         }
         current = current->next;
     }
-    
+    return -1;
+}
 
+VALUE_TYPE cache_put(KEY_TYPE key, VALUE_TYPE value, struct lru_cache *cache){
+   
     //if the key is not found in the cache
     struct lru_cache_node* new_node = (struct lru_cache_node*)malloc(sizeof(struct lru_cache_node));
-    new_node->key = key;
-    new_node->value = 0; // default 
+    strcpy(new_node->key,key);
+    new_node->value = value;
     new_node->next = cache->most_recently_used;
     new_node->prev = NULL;
     if(cache->most_recently_used) {
