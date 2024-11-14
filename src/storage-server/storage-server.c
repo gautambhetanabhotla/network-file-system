@@ -4,6 +4,13 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <dirent.h>
+
+void *sender() {
+
+}
+
+void* listener() {
+=======
 #include <sys/stat.h>
 #include <pthread.h>
 
@@ -62,6 +69,7 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
     
+
     int nm_sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if(nm_sockfd < 0) {
         perror("Socket couldn't be created");
