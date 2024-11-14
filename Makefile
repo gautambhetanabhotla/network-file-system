@@ -36,7 +36,4 @@ ss: $(patsubst src/storage-server/%.c, build/storage-server/%.o, $(wildcard src/
 
 .PHONY: clean
 clean:
-	if [ -d build ]; then rm -r build; fi
-	if [ -d c ]; then rm -r c; fi
-	if [ -d ns ]; then rm -r ns; fi
-	if [ -d ss ]; then rm -r ss; fi
+	rm -rf build c ns ss
