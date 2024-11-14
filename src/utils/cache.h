@@ -1,3 +1,6 @@
+#include <stdio.h>
+#include <stdlib.h>
+
 #ifndef LRU_CACHE_H
 #define LRU_CACHE_H
 
@@ -11,6 +14,7 @@ struct lru_cache_node {
     struct lru_cache_node *next;
 };
 
+//random comment
 struct lru_cache {
     int size;
     int max_size;
