@@ -1,5 +1,14 @@
 #include "cache.h"
 
+
+struct lru_cache* init_cache(int max_size) {
+    struct lru_cache* cache = (struct lru_cache*)malloc(sizeof(struct lru_cache));
+    cache->size = 0;
+    cache->max_size = max_size;
+    cache->most_recently_used = NULL;
+    cache->least_recently_used = NULL;
+}
+
 VALUE_TYPE cache_get(KEY_TYPE key, struct lru_cache* cache) {
     // Look for an entry in the cache and return its value.
     // If it is not present, add it and return it.

@@ -1,8 +1,9 @@
-#include <stdio.h>
-#include <stdlib.h>
-
 #ifndef LRU_CACHE_H
 #define LRU_CACHE_H
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define MAX_LEN 1024
 #define CACHE_MAX_SIZE 10
@@ -27,6 +28,10 @@ struct lru_cache {
 
 VALUE_TYPE cache_get(KEY_TYPE key, struct lru_cache *cache);
 
-void cache_put(KEY_TYPE key, VALUE_TYPE value, struct lru_cache *cache);
+VALUE_TYPE cache_put(KEY_TYPE key, VALUE_TYPE value, struct lru_cache *cache);
+
+struct lru_cache* init_cache(int max_size);
+
+
 
 #endif

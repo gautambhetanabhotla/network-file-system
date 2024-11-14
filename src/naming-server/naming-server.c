@@ -1,4 +1,5 @@
 #include "naming-server.h"
+#include "../utils/cache.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,12 +26,12 @@ int cache_size = 0;
 pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Logging Function
-void log_message(const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    vprintf(format, args);
-    va_end(args);
-}
+// void log_message(const char *format, ...) {
+//     va_list args;
+//     va_start(args, format);
+//     vprintf(format, args);
+//     va_end(args);
+// }
 
 // Send Error Message to Client
 void send_error(int socket_fd, ErrorCode code, const char *message) {
@@ -192,7 +193,7 @@ void *storage_server_handler(void *arg) {
     // Send ACK
     send_ack(ss_socket, "Registration Successful");
     close(ss_socket);
-    log_message("Storage Server %s registered with %d paths.\n", ss_info.ip_address, ss_info.path_count);
+    // log_message("Storage Server %s registered with %d paths.\n", ss_info.ip_address, ss_info.path_count);
     pthread_exit(NULL);
 }
 
@@ -228,7 +229,7 @@ void *client_handler(void *arg) {
         }
         token = strtok(NULL, "\n");
     }
-    log_message("Received request: OPERATION=%s PATH=%s\n", operation, path);
+    // log_message("Received request: OPERATION=%s PATH=%s\n", operation, path);
     // Process Request
     if (strcmp(operation, "READ") == 0 || strcmp(operation, "WRITE") == 0 ||
         strcmp(operation, "INFO") == 0 || strcmp(operation, "STREAM") == 0) {
@@ -239,7 +240,7 @@ void *client_handler(void *arg) {
             char response[MAX_MESSAGE_SIZE];
             snprintf(response, sizeof(response), "SS_IP:%s\nSS_PORT:%d\nEND\n", ss_info->ip_address, ss_info->client_port);
             send_ack(client_socket, response);
-            log_message("Sent storage server details to client for path %s\n", path);
+            // log_message("Sent storage server details to client for path %s\n", path);
         } else {
             send_error(client_socket, ERR_FILE_NOT_FOUND, "File not found");
         }
@@ -271,7 +272,7 @@ void *client_handler(void *arg) {
                 ss_response[ss_bytes] = '\0';
                 // Forward ACK to Client
                 send(client_socket, ss_response, strlen(ss_response), 0);
-                log_message("Forwarded response from SS to client.\n");
+                // log_message("Forwarded response from SS to client.\n");
             }
             close(ss_socket);
         } else {
@@ -316,7 +317,7 @@ void initialize_naming_server(int ss_reg_port, int client_req_port) {
 
     bind(ss_reg_socket, (struct sockaddr *)&ss_reg_addr, sizeof(ss_reg_addr));
     listen(ss_reg_socket, 5);
-    log_message("Naming Server listening for Storage Server registrations on port %d...\n", ss_reg_port);
+    //log_message("Naming Server listening for Storage Server registrations on port %d...\n", ss_reg_port);
 
     // Setup Client Request Socket
     client_req_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -326,7 +327,7 @@ void initialize_naming_server(int ss_reg_port, int client_req_port) {
 
     bind(client_req_socket, (struct sockaddr *)&client_req_addr, sizeof(client_req_addr));
     listen(client_req_socket, 5);
-    log_message("Naming Server listening for client requests on port %d...\n", client_req_port);
+    //log_message("Naming Server listening for client requests on port %d...\n", client_req_port);
 
     // Accept Connections in Separate Threads
     while (1) {
@@ -364,6 +365,7 @@ int main(int argc, char *argv[]) {
     }
     int ss_reg_port = atoi(argv[1]);
     int client_req_port = atoi(argv[2]);
+    init_cache(CACHE_SIZE);
     initialize_naming_server(ss_reg_port, client_req_port);
     return 0;
 }
