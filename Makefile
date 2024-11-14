@@ -1,4 +1,5 @@
 CC := /usr/bin/gcc
+CFLAGS := -g -Wall
 
 .PHONY: all
 all: ns ss c
@@ -16,24 +17,26 @@ build/storage-server: | build
 	mkdir build/storage-server
 
 build/client/%.o: src/client/%.c | build/client
-	$(CC) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 build/naming-server/%.o: src/naming-server/%.c | build/naming-server
-	$(CC) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 build/storage-server/%.o: src/storage-server/%.c | build/storage-server
-	$(CC) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 c: $(patsubst src/client/%.c, build/client/%.o, $(wildcard src/client/*.c)) | build/client
-	$(CC) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^
 
 ns: $(patsubst src/naming-server/%.c, build/naming-server/%.o, $(wildcard src/naming-server/*.c)) | build/naming-server
-	$(CC) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^
 
 ss: $(patsubst src/storage-server/%.c, build/storage-server/%.o, $(wildcard src/storage-server/*.c)) | build/storage-server
-	$(CC) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^
 
 .PHONY: clean
 clean:
-	rm -rf build
-	rm c ns ss
+	if [ -d build ]; then rm -r build; fi
+	if [ -d c ]; then rm -r c; fi
+	if [ -d ns ]; then rm -r ns; fi
+	if [ -d ss ]; then rm -r ss; fi
