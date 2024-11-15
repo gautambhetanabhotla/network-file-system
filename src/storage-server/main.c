@@ -1,4 +1,5 @@
-#include "storage-server.h"
+#include "requests.h"
+#include "files.h"
 
 #include <stdio.h>
 #include <arpa/inet.h>
@@ -10,65 +11,9 @@
 #include <pthread.h>
 #include <string.h>
 #include <pthread.h>
+#include <stdbool.h>
 
-#define BACKLOG 100
-#define MAXPATHLENGTH 4096
-#define MAXFILENAMELENGTH 256
-
-/*
-
-Important: Request exchange format
-
-On startup - 
-
-STORAGESERVER
-<port>
-<path1>
-<path2>
-<path3>
-.....
-STOP,,,
-
-READ
-<virtual path>
-
-WRITE
-<virtual path>
-<content length>
-<content>
-
-*/
-
-void* handle_client(void* arg) {
-    // fprintf(stderr, "EW$RFSVSFWEFSESF");
-    printf("RFVCVSFDDV");
-    int client_sockfd = *(int*)arg;
-    char buf[8192];
-    recv(client_sockfd, buf, sizeof(buf), 0);
-    char request_type[8192];
-    sscanf(buf, "%s", request_type);
-    if(strcmp(request_type, "READ") == 0) {
-        ss_read((void*)&client_sockfd);
-    }
-    else if(strcmp(request_type, "WRITE") == 0) {
-        ss_write((void*)&client_sockfd);
-    }
-    else if(strcmp(request_type, "CREATE") == 0) {
-        ss_create((void*)&client_sockfd);
-    }
-    else if(strcmp(request_type, "DELETE") == 0) {
-        ss_delete((void*)&client_sockfd);
-    }
-    else if(strcmp(request_type, "STREAM") == 0) {
-        ss_stream((void*)&client_sockfd);
-    }
-    else {
-        
-    }
-    return NULL;
-}
-
-int main(int argc, char* argv[]) {
+void createStorageDirectory() {
     DIR* storage_dir = opendir("./storage");
     if(storage_dir == NULL) {
         mkdir("./storage", 0777);
@@ -79,6 +24,15 @@ int main(int argc, char* argv[]) {
         }
     }
     closedir(storage_dir);
+}
+
+void connect_to_naming_server(int argc, char* argv[]) {
+
+}
+
+int main(int argc, char* argv[]) {
+
+    createStorageDirectory();
 
     if(argc != 3) {
         fprintf(stderr, "Usage: %s <IP Address> <Port>\n", argv[0]);
@@ -106,6 +60,7 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
+    // Connect to naming server
     int nm_sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if(nm_sockfd < 0) {
         perror("Socket couldn't be created");
@@ -138,7 +93,7 @@ int main(int argc, char* argv[]) {
     fclose(pathsfile);
     pathsfile = fopen("./paths.txt", "r");
     while(!feof(pathsfile)) {
-        char vpath[MAXPATHLENGTH], rpath[MAXPATHLENGTH];
+        char vpath[MAXPATHLENGTH + 1], rpath[MAXPATHLENGTH + 1];
         fscanf(pathsfile, "%s", vpath);
         if(strlen(vpath) == 0) break;
         if(feof(pathsfile)) {
@@ -150,7 +105,7 @@ int main(int argc, char* argv[]) {
             fprintf(stderr, "Invalid paths file!\n");
             exit(1);
         }
-        add_file_entry(vpath, rpath);
+        add_file_entry(vpath, rpath, false);
         send(nm_sockfd, vpath, strlen(vpath), 0);
     }
     // End with "STOP,,," (commas cause file paths wont contain commas)

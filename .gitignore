@@ -6,3 +6,6 @@ ns
 ss
 c
 paths.txt
+test.c
+*.swp
+*.out
