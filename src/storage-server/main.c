@@ -12,6 +12,9 @@
 #include <string.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <semaphore.h>
+
+extern sem_t n_file_sem;
 
 void createStorageDirectory() {
     DIR* storage_dir = opendir("./storage");
@@ -26,13 +29,83 @@ void createStorageDirectory() {
     closedir(storage_dir);
 }
 
-void connect_to_naming_server(int argc, char* argv[]) {
+int connect_to_naming_server(int argc, char* argv[]) {
+    int nm_sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if(nm_sockfd < 0) {
+        perror("Socket couldn't be created");
+        exit(1);
+    }
+    int nm_server_port = atoi(argv[2]);
+    char* nm_server_ip = argv[1];
+    struct sockaddr_in nm_server_addr;
+    nm_server_addr.sin_family = AF_INET;
+    nm_server_addr.sin_port = htons(nm_server_port);
+    if(inet_pton(AF_INET, nm_server_ip, &nm_server_addr.sin_addr) <= 0) {
+        perror("Invalid/unsupported address");
+        exit(1);
+    }
+    if(connect(nm_sockfd, (struct sockaddr*)&nm_server_addr, sizeof(nm_server_addr)) < 0) {
+        perror("Connection to naming server failed");
+        exit(1);
+    }
+    return nm_sockfd;
+}
 
+void send_paths(int nm_sockfd) {
+    FILE* pathsfile = fopen("./paths.txt", "r");
+    if(pathsfile == NULL) pathsfile = fopen("./paths.txt", "w");
+    fclose(pathsfile);
+    pathsfile = fopen("./paths.txt", "r");
+    while(!feof(pathsfile)) {
+        int flag = 0;
+        char vpath[MAXPATHLENGTH + 1], rpath[MAXPATHLENGTH + 1];
+        fscanf(pathsfile, "%s", vpath);
+        while(strlen(vpath) == 0) {
+            if(feof(pathsfile)) {
+                flag = 1;
+                break;
+            }
+            fscanf(pathsfile, "%s", vpath);
+        }
+        if(flag == 1) break;
+        if(feof(pathsfile)) {
+            fprintf(stderr, "Invalid paths file!\n");
+            exit(1);
+        }
+        fscanf(pathsfile, "%s", rpath);
+        while(strlen(rpath) == 0) {
+            if(feof(pathsfile)) {
+                fprintf(stderr, "Invalid paths file!\n");
+                exit(1);
+            }
+            fscanf(pathsfile, "%s", rpath);
+        }
+        if(feof(pathsfile)) {
+            fprintf(stderr, "Invalid paths file!\n");
+            exit(1);
+        }
+        char mtime[20];
+        fscanf(pathsfile, "%s", mtime);
+        while(strlen(mtime) == 0) {
+            if(feof(pathsfile)) {
+                fprintf(stderr, "Invalid paths file!\n");
+                exit(1);
+            }
+            fscanf(pathsfile, "%s", mtime);
+        }
+        add_file_entry(vpath, rpath, mtime, false);
+        send(nm_sockfd, vpath, strlen(vpath), 0);
+        send(nm_sockfd, " ", 1, 0);
+        send(nm_sockfd, mtime, strlen(mtime), 0);
+        send(nm_sockfd, "\n", 1, 0);
+        vpath[0] = '\0'; rpath[0] = '\0'; mtime[0] = '\0';
+    }
 }
 
 int main(int argc, char* argv[]) {
 
     createStorageDirectory();
+    sem_init(&n_file_sem, 0, 1);
 
     if(argc != 3) {
         fprintf(stderr, "Usage: %s <IP Address> <Port>\n", argv[0]);
@@ -60,55 +133,15 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-    // Connect to naming server
-    int nm_sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if(nm_sockfd < 0) {
-        perror("Socket couldn't be created");
-        exit(1);
-    }
-    int nm_server_port = atoi(argv[2]);
-    char* nm_server_ip = argv[1];
-    struct sockaddr_in nm_server_addr;
-    nm_server_addr.sin_family = AF_INET;
-    nm_server_addr.sin_port = htons(nm_server_port);
-    if(inet_pton(AF_INET, nm_server_ip, &nm_server_addr.sin_addr) <= 0) {
-        perror("Invalid/unsupported address");
-        exit(1);
-    }
-    if(connect(nm_sockfd, (struct sockaddr*)&nm_server_addr, sizeof(nm_server_addr)) < 0) {
-        perror("Connection to naming server failed");
-        exit(1);
-    }
-
+    // Initialise stuff with naming server
+    int nm_sockfd = connect_to_naming_server(argc, argv);
     send(nm_sockfd, "STORAGESERVER\n", strlen("STORAGESERVER\n"), 0);
-
     // Send the port you're using to listen for clients
     char port_str[15];
     snprintf(port_str, 13, "%d\n", PORT);
     send(nm_sockfd, port_str, strlen(port_str), 0);
-
     // Send the list of accessible paths
-    FILE* pathsfile = fopen("./paths.txt", "r");
-    if(pathsfile == NULL) pathsfile = fopen("./paths.txt", "w");
-    fclose(pathsfile);
-    pathsfile = fopen("./paths.txt", "r");
-    while(!feof(pathsfile)) {
-        char vpath[MAXPATHLENGTH + 1], rpath[MAXPATHLENGTH + 1];
-        fscanf(pathsfile, "%s", vpath);
-        if(strlen(vpath) == 0) break;
-        if(feof(pathsfile)) {
-            fprintf(stderr, "Invalid paths file!\n");
-            exit(1);
-        }
-        fscanf(pathsfile, "%s", rpath);
-        if(strlen(rpath) == 0) {
-            fprintf(stderr, "Invalid paths file!\n");
-            exit(1);
-        }
-        add_file_entry(vpath, rpath, false);
-        send(nm_sockfd, vpath, strlen(vpath), 0);
-    }
-    // End with "STOP,,," (commas cause file paths wont contain commas)
+    send_paths(nm_sockfd);
     send(nm_sockfd, "STOP,,,\n", strlen("STOP,,,\n"), 0);
 
     while(1) {

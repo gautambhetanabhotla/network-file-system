@@ -6,9 +6,10 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <stdlib.h>
 
-extern struct file** file_entries = NULL;
-extern unsigned long long int n_file_entries = 0;
+extern struct file** file_entries;
+extern unsigned long long int n_file_entries;
 
 /*
 
@@ -29,6 +30,7 @@ READ
 
 WRITE
 <virtual path>
+<mtime>
 <content length>
 <content>
 
@@ -39,33 +41,31 @@ COPY
 STREAM
 <virtual path>
 
+CREATE
+<virtual path>
+<mtime>
+
 */
 
 void* handle_client(void* arg) {
     fprintf(stderr, "Client arrived!\n");
-    // printf("RFVCVSFDDV");
     int client_sockfd = *(int*)arg;
-    sem_t fdLock;
-    sem_init(&fdLock, 0, 1);
-    char buf[MAXPATHLENGTH + 102];
-    if(recv(client_sockfd, buf, sizeof(buf), 0) <= 0) {
-        fprintf(stderr, "Client disconnected!\n");
-        return NULL;
-    }
-    char request_type[101], vpath[MAXPATHLENGTH + 1];
-    int contentLength = 0;
-    sscanf(buf, "%s%s%d", request_type, vpath, &contentLength);
+    char request_type[11], vpath[MAXPATHLENGTH + 1];
+    recv(client_sockfd, request_type, sizeof(request_type) - 1, 0);
+    recv(client_sockfd, vpath, sizeof(vpath) - 1, 0);
     if(strcmp(request_type, "READ") == 0) {
         ss_read(client_sockfd, vpath);
     }
     else if(strcmp(request_type, "WRITE") == 0) {
-        ss_write(client_sockfd, false, vpath, contentLength);
-    }
-    else if(strcmp(request_type, "WRITESYNC") == 0) {
-        ss_write(client_sockfd, true, vpath, contentLength);
+        char mtime[21], CL[21];
+        recv(client_sockfd, mtime, sizeof(mtime) - 1, 0);
+        recv(client_sockfd, CL, sizeof(CL) - 1, 0);
+        ss_write(client_sockfd, vpath, mtime, atoi(CL));
     }
     else if(strcmp(request_type, "CREATE") == 0) {
-        ss_create(client_sockfd, vpath);
+        char mtime[21];
+        recv(client_sockfd, mtime, sizeof(mtime) - 1, 0);
+        ss_create(client_sockfd, vpath, mtime);
     }
     else if(strcmp(request_type, "DELETE") == 0) {
         ss_delete(client_sockfd, vpath);
@@ -73,10 +73,14 @@ void* handle_client(void* arg) {
     else if(strcmp(request_type, "STREAM") == 0) {
         ss_stream(client_sockfd, vpath);
     }
+    else if(strcmp(request_type, "COPY") == 0) {
+        ss_copy(client_sockfd, vpath);
+    }
     else {
         send(client_sockfd, "tf u sending brother??????????\n", strlen("tf u sending brother??????????\n"), 0);
     }
     close(client_sockfd);
+    pthread_exit(NULL);
     return NULL;
 }
 
@@ -92,10 +96,12 @@ void ss_read(int fd, char* vpath) {
         return;
     }
     char buf[8193]; int n = 0;
+    sem_wait(&f->serviceQueue);
     sem_wait(&f->lock);
     f->readers++;
     if(f->readers == 1) sem_wait(&f->writelock);
     sem_post(&f->lock);
+    sem_post(&f->serviceQueue);
     while(!feof(F)) {
         n = fread(buf, 1, 8192, F);
         if(n > 0) send(fd, buf, n, 0);
@@ -106,7 +112,7 @@ void ss_read(int fd, char* vpath) {
     sem_post(&f->lock);
 }
 
-void ss_write(int fd, bool sync, char* vpath, int contentLength) {
+void ss_write(int fd, char* vpath, char* mtime, int contentLength) {
     struct file* f = get_file(vpath);
     if(!f) {
         send(fd, "File not found\n", strlen("File not found\n"), 0);
@@ -114,7 +120,9 @@ void ss_write(int fd, bool sync, char* vpath, int contentLength) {
     }
     FILE* F = fopen(f->rpath, "w");
     char buf[8193]; int n = 0;
+    sem_wait(&f->serviceQueue);
     sem_wait(&f->writelock);
+    sem_post(&f->serviceQueue);
     while(!feof(F)) {
         n = fread(buf, 1, 8192, F);
         if(n > 0) send(fd, buf, n, 0);
@@ -122,12 +130,17 @@ void ss_write(int fd, bool sync, char* vpath, int contentLength) {
     sem_post(&f->writelock);
 }
 
-void* ss_write_helper(void* arg) {
-    
-}
-
-void ss_create(int fd, char* vpath) {
-    char buf[100];
+void ss_create(int fd, char* vpath, char* mtime) {
+    char rpath[MAXPATHLENGTH + 1];
+    sprintf(rpath, "%s%llu", "storage/", n_file_entries + 1);
+    if(add_file_entry(vpath, rpath, mtime, true)) {
+        send(fd, "Error creating file\n", strlen("Error creating file\n"), 0);
+    }
+    else {
+        send(fd, "File created\n", strlen("File created\n"), 0);
+        FILE* F = fopen(rpath, "w");
+        fclose(F);
+    }
 }
 
 void ss_delete(int fd, char* vpath) {
@@ -153,10 +166,12 @@ void ss_stream(int fd, char* vpath) {
         return;
     }
     char buf[8193]; int n = 0;
+    sem_wait(&f->serviceQueue);
     sem_wait(&f->lock);
     f->readers++;
     if(f->readers == 1) sem_wait(&f->writelock);
     sem_post(&f->lock);
+    sem_post(&f->serviceQueue);
     while(!feof(F)) {
         n = fread(buf, 1, 8192, F);
         if(n > 0) send(fd, buf, n, 0);
@@ -165,4 +180,12 @@ void ss_stream(int fd, char* vpath) {
     f->readers--;
     if(f->readers == 0) sem_post(&f->writelock);
     sem_post(&f->lock);
+}
+
+void ss_copy(int fd, char* vpath) {
+
+}
+
+void ss_info(int fd, char* vpath) {
+    
 }

@@ -1,9 +1,12 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <semaphore.h>
+#include <time.h>
 
 #ifndef FILE_H
 #define FILE_H
+
+#define _GNU_SOURCE
 
 struct trie_node {
     struct file* file;
@@ -13,12 +16,12 @@ struct trie_node {
 extern struct trie_node* trieRoot;
 
 struct file {
-    char *vpath, *rpath;
+    char *vpath, *rpath, *mtime;
     sem_t lock, writelock, serviceQueue;
     int readers;
 };
 
-int add_file_entry(char* vpath, char* rpath, bool toFile);
+struct file* add_file_entry(char* vpath, char* rpath, char* mtime, bool toFile);
 struct file* get_file(char* vpath);
 
 #endif
