@@ -1,11 +1,18 @@
 #ifndef NAMING_SERVER_H
 #define NAMING_SERVER_H
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <signal.h>
+#include <arpa/inet.h>
+#include <semaphore.h>
 #include <netinet/in.h>
 #include <pthread.h>
 
 // Maximum sizes
-#define MAX_STORAGE_SERVERS 100
+#define MAX_STORAGE_SERVERS 10
 #define MAX_CLIENTS 100
 #define MAX_PATH_LENGTH 1024
 #define MAX_PATHS_PER_SS 1000
@@ -41,7 +48,6 @@ typedef struct {
     struct sockaddr_in client_addr;
 } ClientRequest;
 
-#define MAX_STORAGE_SERVERS 100
 #define MAX_CLIENTS 100
 #define MAX_FILENAME_LENGTH 1024
 #define MAX_IP_LENGTH 16
@@ -78,5 +84,15 @@ StorageServerInfo *find_storage_server_for_path(const char *path);
 void update_registry(StorageServerInfo *ss_info);
 void send_error(int socket_fd, ErrorCode code, const char *message);
 void send_ack(int socket_fd, const char *message);
+TrieNode *create_trie_node();
+void insert_path(const char *path, int storage_server_id);
+int search_path(const char *path);
+int register_storage_server(const char *ip, int port);
+void handle_client(int client_socket, char *buffer);
+void save_trie(const char *filename);
+void load_trie(const char *filename);
+void save_cache(const char *filename);
+void load_cache(const char *filename);
+void signal_handler(int sig);
 
 #endif // NAMING_SERVER_H

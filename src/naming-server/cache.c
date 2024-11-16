@@ -7,6 +7,7 @@ struct lru_cache *init_cache(int max_size)
     cache->max_size = max_size;
     cache->most_recently_used = NULL;
     cache->least_recently_used = NULL;
+    return cache;
 }
 
 FileEntry* cache_get(KEY_TYPE key, struct lru_cache *cache)
@@ -81,7 +82,10 @@ FileEntry* cache_put(KEY_TYPE key, FileEntry* value, struct lru_cache *cache)
             lru->prev->next = NULL;
         }
         cache->least_recently_used = lru->prev;
-        cache->least_recently_used->next = NULL;
+        if(cache->least_recently_used)
+        {
+            cache->least_recently_used->next = NULL;
+        }
         free(lru);
         cache->size--;
     }
