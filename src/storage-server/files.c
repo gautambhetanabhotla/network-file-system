@@ -4,11 +4,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <semaphore.h>
 
 struct file** file_entries = NULL;
 unsigned long long int n_file_entries = 0;
+sem_t n_file_sem;
 
-struct file* make_file_entry(char* vpath, char* rpath) {
+struct file* make_file_entry(char* vpath, char* rpath, char* mtime) {
     struct file* entry = (struct file*)malloc(sizeof(struct file));
     if(entry == NULL) {
         perror("Memory allocation failed");
@@ -16,9 +18,10 @@ struct file* make_file_entry(char* vpath, char* rpath) {
     }
     entry->vpath = strdup(vpath);
     entry->rpath = strdup(rpath);
+    entry->mtime = strdup(mtime);
     sem_init(&(entry->lock), 0, 1);
     sem_init(&(entry->writelock), 0, 1);
-    sem_init(&(entry->serviceQueue), 0, 0);
+    sem_init(&(entry->serviceQueue), 0, 1);
     entry->readers = 0;
     return entry;
 }
@@ -33,26 +36,28 @@ struct trie_node* create_trie_node() {
     return node;
 }
 
-int add_file_entry(char* vpath, char* rpath, bool toFile) {
+struct file* add_file_entry(char* vpath, char* rpath, char* mtime, bool toFile) {
     // Adds a file entry to the trie for fast access.
     if(!trieRoot) trieRoot = create_trie_node();
     struct trie_node *current = trieRoot;
-    struct file* file = make_file_entry(vpath, rpath);
+    struct file* file = make_file_entry(vpath, rpath, mtime);
     for(int i = 0; vpath[i]; i++) {
         unsigned char index = (unsigned char)vpath[i];
         if(!current->children[index]) current->children[index] = create_trie_node();
         current = current->children[index];
     }
     if(!current->file) current->file = file;
-    else return 1;
+    else return NULL;
+    sem_wait(&n_file_sem);
     file_entries = (struct file**)realloc(file_entries, sizeof(struct file*) * (n_file_entries + 1));
     file_entries[n_file_entries++] = file;
+    sem_post(&n_file_sem);
     if(toFile) {
         FILE* pathsfile = fopen("paths.txt", "a");
-        fprintf(pathsfile, "%s %s\n", vpath, rpath);
+        fprintf(pathsfile, "%s %s %s\n", vpath, rpath, mtime);
         fclose(pathsfile);
     }
-    return 0;
+    return file;
 }
 
 struct file* get_file(char* vpath) {
@@ -88,3 +93,4 @@ int remove_file_entry(char* vpath) {
         current->file = NULL;
         return 0;
     }
+}
