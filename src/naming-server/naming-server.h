@@ -65,11 +65,7 @@ typedef struct {
     struct FileEntry *is_copy;
 } FileEntry;
 
-// Trie Node Structure
-typedef struct TrieNode {
-    struct TrieNode *children[256];
-    FileEntry *file_entry;
-} TrieNode;
+
 
 
 
@@ -90,13 +86,9 @@ StorageServerInfo *find_storage_server_for_path(const char *path);
 void update_registry(StorageServerInfo *ss_info);
 void send_error(int socket_fd, ErrorCode code, const char *message);
 void send_ack(int socket_fd, const char *message);
-TrieNode *create_trie_node();
-void insert_path(const char *path, int storage_server_id);
-int search_path(const char *path);
+
 int register_storage_server(const char *ip, int port);
 void handle_client(int client_socket, char *buffer);
-void save_trie(const char *filename);
-void load_trie(const char *filename);
 void save_cache(const char *filename);
 void load_cache(const char *filename);
 void signal_handler(int sig);

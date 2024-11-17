@@ -1,0 +1,11 @@
+FORMAT FOR COMMUNICATION BETWEEN CLIENT AND NS
+
+Format (to NS)	Format (from NS)
+CREATE\n<folderpath>\n<f_path (file or folder)>	<success or failure message>
+DELETE\n<folderpath>\n<f_path (file or folder)>	<success or failure message>
+COPY\n<sourcefilepath>\n<destfolderpath>	<success or failure message>
+INFO\n<filepath>	<info about file>\n<success or failure message>
+LIST\n<folderpath>	<full list of items>\n<success or failure message>
+READ\n<filepath>	<ss_ip>\n<ss_portnum>
+STREAM\n<audiofilepath>	<ss_ip>\n<ss_portnum>
+WRITE\n<destfilepath>	<ss_ip>\n<ss_portnum>

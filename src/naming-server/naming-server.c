@@ -1,5 +1,6 @@
 #include "naming-server.h"
 #include "cache.h"
+#include "trie.h"
 
 
 // Global port
@@ -14,7 +15,7 @@ pthread_mutex_t storage_server_mutex;     // Mutex to protect storage_server_cou
 void signal_handler(int sig)
 {
     printf("Received signal %d, saving data and exiting...\n", sig);
-    save_trie("trie_data.bin");
+    save_trie("trie_data.bin", root);
     save_cache("cache_data.bin");
     exit(0);
 }
@@ -30,40 +31,10 @@ TrieNode *create_trie_node()
 }
 
 // Insert a path into the Trie
-void insert_path(const char *path, int storage_server_id)
-{
-    TrieNode *current = root;
-    for (int i = 0; path[i]; i++)
-    {
-        unsigned char index = (unsigned char)path[i];
-        if (!current->children[index])
-            current->children[index] = create_trie_node();
-        current = current->children[index];
-    }
-    if (!current->file_entry)
-    {
-        current->file_entry = (FileEntry *)malloc(sizeof(FileEntry));
-        strcpy(current->file_entry->filename, path);
-        current->file_entry->storage_server_id = storage_server_id;
-        current->file_entry->is_copy = NULL;
-    }
-}
+
 
 // Search for a path in the Trie
-int search_path(const char *path)
-{
-    TrieNode *current = root;
-    for (int i = 0; path[i]; i++)
-    {
-        unsigned char index = (unsigned char)path[i];
-        if (!current->children[index])
-            return -1; // Not found
-        current = current->children[index];
-    }
-    if (current->file_entry)
-        return current->file_entry->storage_server_id;
-    return -1; // Not found
-}
+
 
 // Register a Storage Server
 int register_storage_server(const char *ip, int port)
@@ -77,77 +48,10 @@ int register_storage_server(const char *ip, int port)
 }
 
 // Function to save Trie to a file
-void save_trie(const char *filename)
-{
-    FILE *file = fopen(filename, "wb");
-    if (!file)
-    {
-        perror("Failed to open trie data file for writing");
-        return;
-    }
-    // Recursively save trie nodes
-    void save_node(TrieNode * node, FILE * file)
-    {
-        if (!node)
-            return;
-        // Write a flag indicating if the node has a FileEntry
-        uint8_t has_file_entry = (node->file_entry != NULL);
-        fwrite(&has_file_entry, sizeof(uint8_t), 1, file);
-        if (has_file_entry)
-        {
-            // Write the FileEntry data
-            fwrite(node->file_entry, sizeof(FileEntry), 1, file);
-        }
-        // Recursively save children
-        for (int i = 0; i < 256; i++)
-        {
-            uint8_t has_child = (node->children[i] != NULL);
-            fwrite(&has_child, sizeof(uint8_t), 1, file);
-            if (has_child)
-            {
-                save_node(node->children[i], file);
-            }
-        }
-    }
-    save_node(root, file);
-    fclose(file);
-}
+
 
 // Function to load Trie from a file
-void load_trie(const char *filename)
-{
-    FILE *file = fopen(filename, "rb");
-    if (!file)
-    {
-        printf("Trie data file not found, starting with empty trie.\n");
-        return;
-    }
-    // Recursively load trie nodes
-    printf("Loading Trie from file...\n");
-    void load_node(TrieNode * node, FILE * file)
-    {
-        uint8_t has_file_entry;
-        fread(&has_file_entry, sizeof(uint8_t), 1, file);
-        if (has_file_entry)
-        {
-            node->file_entry = (FileEntry *)malloc(sizeof(FileEntry));
-            fread(node->file_entry, sizeof(FileEntry), 1, file);
-            printf("Loaded file entry: %s\n", node->file_entry->filename);
-        }
-        for (int i = 0; i < 256; i++)
-        {
-            uint8_t has_child;
-            fread(&has_child, sizeof(uint8_t), 1, file);
-            if (has_child)
-            {
-                node->children[i] = create_trie_node();
-                load_node(node->children[i], file);
-            }
-        }
-    }
-    load_node(root, file);
-    fclose(file);
-}
+
 
 // Function to save Cache to a file
 void save_cache(const char *filename)
@@ -229,7 +133,7 @@ void handle_storage_server(int client_socket, char *buffer)
     {
         if (strcmp(token, "STOP") == 0)
             break;
-        insert_path(token, ss_id);
+        insert_path(token, ss_id,root);
     }
 }
 
@@ -302,7 +206,7 @@ void handle_client(int client_socket, char *buffer)
         else
         {
             // Search in Trie
-            int ss_id = search_path(path);
+            int ss_id = search_path(path,root);
             if (ss_id != -1)
             {
                 // Update Cache
@@ -384,7 +288,7 @@ int main(int argc, char *argv[])
     cache = init_cache(CACHE_SIZE);
 
     // Load Trie and Cache from files
-    load_trie("trie_data.bin");
+    load_trie("trie_data.bin",root);
     load_cache("cache_data.bin");
 
     // Set up signal handlers to save data on exit
