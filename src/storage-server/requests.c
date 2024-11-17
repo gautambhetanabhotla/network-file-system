@@ -8,8 +8,18 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+#define UNIX_START_TIME "1970-01-01 00:00:00"
+
 extern struct file** file_entries;
 extern unsigned long long int n_file_entries;
+
+enum request_type {
+    READ = 1, WRITE, STREAM, INFO, LIST, CREATE, COPY, DELETE
+};
+
+enum exit_status {
+    E_SUCCESS, E_FILE_DOESNT_EXIST, E_INCOMPLETE_WRITE, E_FILE_ALREADY_EXISTS
+};
 
 /*
 
@@ -30,7 +40,6 @@ READ
 
 WRITE
 <virtual path>
-<mtime>
 <content length>
 <content>
 
@@ -43,49 +52,87 @@ STREAM
 
 CREATE
 <virtual path>
-<mtime>
+
+Normalised:
+10 - Request type
+4096 - Virtual path
+20 - content length
+Header size = 10 + 4096 + 20 = 4126
 
 */
+
+extern int nm_sockfd;
+
+void sendToNM(int fd, int reqID, enum exit_status status, char* vpath) {
+    
+}
+
+void ns_synchronize(int fd, char* vpath) {
+    
+}
+
+int recv_full(int fd, char* buf, int contentLength) {
+    char buf2[4097]; int n = 0;
+    int k;
+    while(n < contentLength) {
+        k = recv(fd, buf2, 4096, 0);
+        if(k <= 0) break;
+        memcpy(buf + n, buf2, k);
+        n += k;
+    }
+    if(k < 0) return 2; // For other error
+    if(n < contentLength) return 1; // For premature termination
+    else return 0; // Success
+}
 
 void* handle_client(void* arg) {
     fprintf(stderr, "Client arrived!\n");
     int client_sockfd = *(int*)arg;
-    char request_type[11], vpath[MAXPATHLENGTH + 1];
-    recv(client_sockfd, request_type, sizeof(request_type) - 1, 0);
-    recv(client_sockfd, vpath, sizeof(vpath) - 1, 0);
-    if(strcmp(request_type, "READ") == 0) {
-        ss_read(client_sockfd, vpath);
-    }
-    else if(strcmp(request_type, "WRITE") == 0) {
-        char mtime[21], CL[21];
-        recv(client_sockfd, mtime, sizeof(mtime) - 1, 0);
-        recv(client_sockfd, CL, sizeof(CL) - 1, 0);
-        ss_write(client_sockfd, vpath, mtime, atoi(CL));
-    }
-    else if(strcmp(request_type, "CREATE") == 0) {
-        char mtime[21];
-        recv(client_sockfd, mtime, sizeof(mtime) - 1, 0);
-        ss_create(client_sockfd, vpath, mtime);
-    }
-    else if(strcmp(request_type, "DELETE") == 0) {
-        ss_delete(client_sockfd, vpath);
-    }
-    else if(strcmp(request_type, "STREAM") == 0) {
-        ss_stream(client_sockfd, vpath);
-    }
-    else if(strcmp(request_type, "COPY") == 0) {
-        ss_copy(client_sockfd, vpath);
-    }
-    else if(strcmp(request_type, "INFO") == 0) {
-        ss_info(client_sockfd, vpath);
-    }
-    else if(strcmp(request_type, "UPDATE") == 0) {
-        char mtime[21];
-        recv(client_sockfd, mtime, sizeof(mtime) - 1, 0);
-        ss_update_mtime(client_sockfd, vpath, mtime);
-    }
-    else {
-        send(client_sockfd, "tf u sending brother??????????\n", strlen("tf u sending brother??????????\n"), 0);
+    char reqdata[11], vpath[MAXPATHLENGTH + 2], CL[21];
+    vpath[4097] = '\0';
+    // recv(client_sockfd, reqdata, sizeof(reqdata) - 1, 0);
+    recv_full(client_sockfd, reqdata, sizeof(reqdata) - 1);
+    // recv(client_sockfd, CL, sizeof(CL) - 1, 0);
+    recv_full(client_sockfd, CL, sizeof(CL) - 1);
+    // recv(client_sockfd, vpath, sizeof(vpath), 0);
+    int contentLength = atoi(CL);
+    int CLD = contentLength < 4097 ? contentLength : 4097;
+    recv_full(client_sockfd, vpath, CLD);
+    char* fp = vpath;
+    while(*fp != '\n') fp++;
+    *fp = '\0';
+    fp++;
+    int remainingContentLength = vpath + CLD - fp; // COULD CAUSE ERRORS, CHECK
+    int requestID = atoi(reqdata + 1);
+    switch(reqdata[0] - '0') {
+        case READ:
+            ss_read(client_sockfd, vpath);
+            break;
+        case WRITE:
+            ss_write(client_sockfd, vpath, contentLength);
+            break;
+        case CREATE:
+            char mtime[21];
+            recv(client_sockfd, mtime, sizeof(mtime) - 1, 0);
+            ss_create(client_sockfd, vpath, mtime);
+            break;
+        case DELETE:
+            ss_delete(client_sockfd, vpath);
+            break;
+        case STREAM:
+            ss_stream(client_sockfd, vpath);
+            break;
+        case COPY:
+            char vpath2[MAXPATHLENGTH + 1];
+            recv(client_sockfd, vpath2, sizeof(vpath2) - 1, 0);
+            ss_copy(client_sockfd, vpath, vpath2);
+            break;
+        case INFO:
+            ss_info(client_sockfd, vpath);
+            break;
+        default:
+            send(client_sockfd, "tf u sending brother??????????\n", strlen("tf u sending brother??????????\n"), 0);
+            break;
     }
     close(client_sockfd);
     pthread_exit(NULL);
@@ -120,9 +167,9 @@ void ss_read(int fd, char* vpath) {
     sem_post(&f->lock);
 }
 
-void ss_write(int fd, char* vpath, char* mtime, int contentLength) {
+void ss_write(int fd, char* vpath, int contentLength) {
     struct file* f = get_file(vpath);
-    if(!f) f = ss_create(fd, vpath, mtime);
+    if(!f) f = ss_create(fd, vpath, UNIX_START_TIME);
     if(!f) {
         send(fd, "File not found\n", strlen("File not found\n"), 0);
         return;
@@ -205,7 +252,7 @@ void ss_stream(int fd, char* vpath) {
     sem_post(&f->lock);
 }
 
-void ss_copy(int fd, char* vpath) {
+void ss_copy(int fd, char* vpath1, char* vpath2) {
 
 }
 

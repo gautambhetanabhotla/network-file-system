@@ -16,6 +16,8 @@
 
 extern sem_t n_file_sem;
 
+int nm_sockfd;
+
 void createStorageDirectory() {
     DIR* storage_dir = opendir("./storage");
     if(storage_dir == NULL) {
@@ -134,7 +136,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Initialise stuff with naming server
-    int nm_sockfd = connect_to_naming_server(argc, argv);
+    nm_sockfd = connect_to_naming_server(argc, argv);
     send(nm_sockfd, "STORAGESERVER\n", strlen("STORAGESERVER\n"), 0);
     // Send the port you're using to listen for clients
     char port_str[15];
