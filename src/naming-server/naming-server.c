@@ -99,54 +99,171 @@ void *handle_connection(void *arg)
     return NULL;
 }
 
-void handle_client(int client_socket, char *buffer)
-{
-    // Process client request
-    char *token = strtok(buffer, " \n");
-    if (strcmp(token, "REQUEST") == 0)
-    {
-        char *path = strtok(NULL, " \n");
 
-        // Search in cache
-        FileEntry *entry = cache_get(path, cache);
-        if (entry != NULL)
-        {
-            int ss_id = entry->storage_server_id;
-            char response[256];
-            snprintf(response, sizeof(response), "%s %d\n",
-                     storage_servers[ss_id].ip_address,
-                     storage_servers[ss_id].port);
-            send(client_socket, response, strlen(response), 0);
-        }
-        else
-        {
-            // Search in Trie
-            int ss_id = search_path(path,root);
-            if (ss_id != -1)
-            {
-                // Update Cache
+
+//Handle Client Requests
+void handle_client(int client_socket, char *initial_buffer) {
+    char buffer[1024];
+    strcpy(buffer, initial_buffer);  // Copy the initial buffer
+
+    // Parse the command and arguments
+    char *saveptr;
+    char *command = strtok_r(buffer, "\n", &saveptr);
+
+    if (command == NULL) {
+        const char *msg = "Error: No command received\n";
+        send(client_socket, msg, strlen(msg), 0);
+        return;
+    }
+
+    if (strcmp(command, "CREATE") == 0) {
+        char *folderpath = strtok_r(NULL, "\n", &saveptr);
+        char *f_path = strtok_r(NULL, "\n", &saveptr);
+
+        if (folderpath && f_path) {
+            char full_path[MAX_PATH_LENGTH];
+            snprintf(full_path, sizeof(full_path), "%s/%s", folderpath, f_path);
+
+            int ss_id = search_path(full_path, root);
+            if (ss_id != -1) {
+                const char *msg = "Error: File or folder already exists\n";
+                send(client_socket, msg, strlen(msg), 0);
+            } else {
+                // For simplicity, select the first storage server
+                int ss_id = 0;
+
+                // Insert path into trie
+                insert_path(full_path, ss_id, root);
+
+                // Update cache
                 FileEntry *new_entry = malloc(sizeof(FileEntry));
-                strcpy(new_entry->filename, path);
+                strcpy(new_entry->filename, full_path);
                 new_entry->storage_server_id = ss_id;
-                cache_put(path, new_entry, cache);
+                cache_put(full_path, new_entry, cache);
 
-                // Send response
-                char response[256];
-                snprintf(response, sizeof(response), "%s %d\n",
-                         storage_servers[ss_id].ip_address,
-                         storage_servers[ss_id].port);
-                send(client_socket, response, strlen(response), 0);
+                // TODO: Send CREATE command to storage server
+
+                const char *msg = "Success: File or folder created\n";
+                send(client_socket, msg, strlen(msg), 0);
             }
-            else
-            {
+        } else {
+            const char *msg = "Error: Invalid parameters for CREATE\n";
+            send(client_socket, msg, strlen(msg), 0);
+        }
+    } else if (strcmp(command, "DELETE") == 0) {
+        char *folderpath = strtok_r(NULL, "\n", &saveptr);
+        char *f_path = strtok_r(NULL, "\n", &saveptr);
+
+        if (folderpath && f_path) {
+            char full_path[MAX_PATH_LENGTH];
+            snprintf(full_path, sizeof(full_path), "%s/%s", folderpath, f_path);
+
+            int ss_id = search_path(full_path, root);
+            if (ss_id == -1) {
+                const char *msg = "Error: File or folder not found\n";
+                send(client_socket, msg, strlen(msg), 0);
+            } else {
+                // Remove path from trie and cache
+                remove_path(full_path,root);
+                cache_remove(full_path, cache);
+
+                // TODO: Send DELETE command to storage server
+
+                const char *msg = "Success: File or folder deleted\n";
+                send(client_socket, msg, strlen(msg), 0);
+            }
+        } else {
+            const char *msg = "Error: Invalid parameters for DELETE\n";
+            send(client_socket, msg, strlen(msg), 0);
+        }
+    } else if (strcmp(command, "COPY") == 0) {
+        char *sourcefilepath = strtok_r(NULL, "\n", &saveptr);
+        char *destfolderpath = strtok_r(NULL, "\n", &saveptr);
+
+        if (sourcefilepath && destfolderpath) {
+            // TODO: Implement COPY logic
+
+            const char *msg = "Success: File copied\n";
+            send(client_socket, msg, strlen(msg), 0);
+        } else {
+            const char *msg = "Error: Invalid parameters for COPY\n";
+            send(client_socket, msg, strlen(msg), 0);
+        }
+    } else if (strcmp(command, "INFO") == 0) {
+        char *filepath = strtok_r(NULL, "\n", &saveptr);
+
+        if (filepath) {
+            int ss_id = search_path(filepath, root);
+            if (ss_id != -1) {
+                // TODO: Retrieve actual file info from storage server
+
+                const char *file_info = "File size: 1024 bytes\nLast modified: 2023-11-01\n";
+                send(client_socket, file_info, strlen(file_info), 0);
+
+                const char *msg = "Success: File info retrieved\n";
+                send(client_socket, msg, strlen(msg), 0);
+            } else {
                 const char *msg = "Error: File not found\n";
                 send(client_socket, msg, strlen(msg), 0);
             }
+        } else {
+            const char *msg = "Error: Invalid parameters for INFO\n";
+            send(client_socket, msg, strlen(msg), 0);
         }
-    }
-    else
-    {
-        const char *msg = "Invalid command\n";
+    } else if (strcmp(command, "LIST") == 0) {
+        char *folderpath = strtok_r(NULL, "\n", &saveptr);
+
+        if (folderpath) {
+            // TODO: Retrieve actual list from storage server
+
+            const char *list = "file1.txt\nfile2.txt\nfolder1\n";
+            send(client_socket, list, strlen(list), 0);
+
+            const char *msg = "Success: List retrieved\n";
+            send(client_socket, msg, strlen(msg), 0);
+        } else {
+            const char *msg = "Error: Invalid parameters for LIST\n";
+            send(client_socket, msg, strlen(msg), 0);
+        }
+    } else if (strcmp(command, "READ") == 0 || strcmp(command, "STREAM") == 0 || strcmp(command, "WRITE") == 0) {
+        char *filepath = strtok_r(NULL, "\n", &saveptr);
+
+        if (filepath) {
+            // Check in cache
+            FileEntry *entry = cache_get(filepath, cache);
+            if (entry != NULL) {
+                int ss_id = entry->storage_server_id;
+                char response[256];
+                snprintf(response, sizeof(response), "%s\n%d\n",
+                         storage_servers[ss_id].ip_address,
+                         storage_servers[ss_id].port);
+                send(client_socket, response, strlen(response), 0);
+            } else {
+                int ss_id = search_path(filepath, root);
+                if (ss_id != -1) {
+                    // Update cache
+                    FileEntry *new_entry = malloc(sizeof(FileEntry));
+                    strcpy(new_entry->filename, filepath);
+                    new_entry->storage_server_id = ss_id;
+                    cache_put(filepath, new_entry, cache);
+
+                    // Send storage server info
+                    char response[256];
+                    snprintf(response, sizeof(response), "%s\n%d\n",
+                             storage_servers[ss_id].ip_address,
+                             storage_servers[ss_id].port);
+                    send(client_socket, response, strlen(response), 0);
+                } else {
+                    const char *msg = "Error: File not found\n";
+                    send(client_socket, msg, strlen(msg), 0);
+                }
+            }
+        } else {
+            const char *msg = "Error: Invalid parameters\n";
+            send(client_socket, msg, strlen(msg), 0);
+        }
+    } else {
+        const char *msg = "Error: Invalid command\n";
         send(client_socket, msg, strlen(msg), 0);
     }
 }
@@ -204,7 +321,11 @@ int main(int argc, char *argv[])
 
     // Load Trie and Cache from files
     load_trie("trie_data.bin",root);
+<<<<<<< HEAD
+    load_cache("cache_data.bin", cache);
+=======
     load_cache("cache_data.bin",cache);
+>>>>>>> 8dfa9e8d8fc24b696c9bf22689d7f61d9156137f
 
     // Set up signal handlers to save data on exit
     signal(SIGINT, signal_handler);

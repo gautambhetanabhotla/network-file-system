@@ -106,12 +106,49 @@ void load_trie(const char *filename, TrieNode *root)
     fclose(file);
 }
 
+// Remove a path from the Trie
+void remove_path(const char *path, TrieNode *root) {
+    TrieNode *current = root;
+    TrieNode *parent = NULL;
+    unsigned char last_index = 0;
 
-TrieNode *create_trie_node()
-{
-    TrieNode *node = (TrieNode *)malloc(sizeof(TrieNode));
-    for (int i = 0; i < 256; i++)
-        node->children[i] = NULL;
-    node->file_entry = NULL;
-    return node;
+    // Stack to keep track of the path
+    TrieNode *node_stack[MAX_PATH_LENGTH];
+    int index_stack[MAX_PATH_LENGTH];
+    int depth = 0;
+
+    for (int i = 0; path[i]; i++) {
+        unsigned char index = (unsigned char)path[i];
+        if (!current->children[index])
+            return;  // Path not found
+
+        node_stack[depth] = current;
+        index_stack[depth] = index;
+        depth++;
+
+        current = current->children[index];
+    }
+
+    if (current->file_entry) {
+        free(current->file_entry);
+        current->file_entry = NULL;
+
+        // Remove nodes if they are empty
+        for (int i = depth - 1; i >= 0; i--) {
+            TrieNode *node = node_stack[i]->children[index_stack[i]];
+            if (node->file_entry)
+                break;
+            int has_children = 0;
+            for (int j = 0; j < 256; j++) {
+                if (node->children[j]) {
+                    has_children = 1;
+                    break;
+                }
+            }
+            if (has_children)
+                break;
+            free(node);
+            node_stack[i]->children[index_stack[i]] = NULL;
+        }
+    }
 }

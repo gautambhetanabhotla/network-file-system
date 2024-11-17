@@ -153,3 +153,30 @@ void save_cache(const char *filename, struct lru_cache *cache)
     fclose(file);
 }
 
+// Cache Remove Function
+void cache_remove(const char *key, struct lru_cache *cache) {
+    struct lru_cache_node *current = cache->most_recently_used;
+
+    while (current) {
+        if (strcmp(current->key, key) == 0) {
+            // Remove node from list
+            if (current->prev)
+                current->prev->next = current->next;
+            else
+                cache->most_recently_used = current->next;
+
+            if (current->next)
+                current->next->prev = current->prev;
+            else
+                cache->least_recently_used = current->prev;
+
+            free(current->value);
+            free(current);
+            cache->size--;
+            return;
+        }
+        current = current->next;
+    }
+}
+
+
