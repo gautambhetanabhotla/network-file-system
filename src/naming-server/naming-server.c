@@ -103,40 +103,55 @@ void *handle_connection(void *arg)
     int client_socket = *(int *)arg;
     free(arg);
 
-    char buffer[1024] = {0};
-    int bytes_received = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
-    if (bytes_received <= 0)
-    {
-        close(client_socket);
-        return NULL;
-    }
-    buffer[bytes_received] = '\0';
+    char buffer[1024];
+    int bytes_received;
 
-    // Check if the message is from a storage server
-    printf("Received: %s\n", buffer);
-    if (strncmp(buffer, "STORAGESERVER", 13) == 0)
+    while ((bytes_received = recv(client_socket, buffer, sizeof(buffer) - 1, 0)) > 0)
     {
-        handle_storage_server(client_socket, buffer);
+        buffer[bytes_received] = '\0';
 
-        // If this is the first storage server, post the semaphore
-        pthread_mutex_lock(&storage_server_mutex);
-        if (storage_server_count == 1)
+        // Check if the message is from a storage server
+        printf("Received: %s\n", buffer);
+        if (strncmp(buffer, "STORAGESERVER", 13) == 0)
         {
-            printf("At least one storage server is connected\n");
-            sem_post(&storage_server_sem);
+            handle_storage_server(client_socket, buffer);
+
+            // If this is the first storage server, post the semaphore
+            pthread_mutex_lock(&storage_server_mutex);
+            if (storage_server_count == 1)
+            {
+                printf("At least one storage server is connected\n");
+                sem_post(&storage_server_sem);
+            }
+            pthread_mutex_unlock(&storage_server_mutex);
         }
-        pthread_mutex_unlock(&storage_server_mutex);
+        else
+        {
+            // Wait until at least one storage server is connected
+            sem_wait(&storage_server_sem);
+            sem_post(&storage_server_sem); // Keep semaphore value unchanged
+
+            handle_client(client_socket, buffer);
+        }
+
+        // Check for "STOP" command
+        if (strstr(buffer, "STOP") != NULL)
+        {
+            break;
+        }
     }
-    else
+
+    if (bytes_received == 0)
     {
-        // Wait until at least one storage server is connected
-        sem_wait(&storage_server_sem);
-        sem_post(&storage_server_sem); // Keep semaphore value unchanged
-
-        handle_client(client_socket, buffer);
+        // Client closed the connection
+        printf("Client disconnected.\n");
+    }
+    else if (bytes_received < 0)
+    {
+        perror("recv");
     }
 
-    //close(client_socket);
+    close(client_socket);
     return NULL;
 }
 
