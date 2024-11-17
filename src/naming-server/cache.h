@@ -28,7 +28,8 @@ struct lru_cache {
 
 FileEntry* cache_get(KEY_TYPE key, struct lru_cache *cache);
 FileEntry* cache_put(KEY_TYPE key, FileEntry* value, struct lru_cache *cache);
-
+void save_cache(const char *filename, struct lru_cache *cache);
+void load_cache(const char *filename, struct lru_cache *cache);
 struct lru_cache* init_cache(int max_size);
 
 #endif
