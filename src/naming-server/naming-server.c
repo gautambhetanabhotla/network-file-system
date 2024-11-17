@@ -249,6 +249,7 @@ void *handle_connection(void *arg)
     buffer[bytes_received] = '\0';
 
     // Check if the message is from a storage server
+    printf("Received: %s\n", buffer);
     if (strncmp(buffer, "STORAGESERVER", 13) == 0)
     {
         handle_storage_server(client_socket, buffer);
@@ -271,7 +272,7 @@ void *handle_connection(void *arg)
         handle_client(client_socket, buffer);
     }
 
-    close(client_socket);
+    //close(client_socket);
     return NULL;
 }
 

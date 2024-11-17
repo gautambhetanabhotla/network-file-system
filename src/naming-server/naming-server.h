@@ -58,6 +58,10 @@ typedef struct {
 typedef struct {
     char filename[MAX_FILENAME_LENGTH];
     int storage_server_id;
+    int backup1_server_id;
+    int backup2_server_id;
+    time_t last_modified;
+
     struct FileEntry *is_copy;
 } FileEntry;
 
