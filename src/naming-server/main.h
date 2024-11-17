@@ -12,6 +12,7 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include <time.h>
+#include <fcntl.h>
 
 
 #define MAX_LEN 1024
