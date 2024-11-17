@@ -76,6 +76,14 @@ void* handle_client(void* arg) {
     else if(strcmp(request_type, "COPY") == 0) {
         ss_copy(client_sockfd, vpath);
     }
+    else if(strcmp(request_type, "INFO") == 0) {
+        ss_info(client_sockfd, vpath);
+    }
+    else if(strcmp(request_type, "UPDATE") == 0) {
+        char mtime[21];
+        recv(client_sockfd, mtime, sizeof(mtime) - 1, 0);
+        ss_update_mtime(client_sockfd, vpath, mtime);
+    }
     else {
         send(client_sockfd, "tf u sending brother??????????\n", strlen("tf u sending brother??????????\n"), 0);
     }
@@ -114,6 +122,7 @@ void ss_read(int fd, char* vpath) {
 
 void ss_write(int fd, char* vpath, char* mtime, int contentLength) {
     struct file* f = get_file(vpath);
+    if(!f) f = ss_create(fd, vpath, mtime);
     if(!f) {
         send(fd, "File not found\n", strlen("File not found\n"), 0);
         return;
@@ -123,24 +132,37 @@ void ss_write(int fd, char* vpath, char* mtime, int contentLength) {
     sem_wait(&f->serviceQueue);
     sem_wait(&f->writelock);
     sem_post(&f->serviceQueue);
-    while(!feof(F)) {
-        n = fread(buf, 1, 8192, F);
-        if(n > 0) send(fd, buf, n, 0);
+    while(n < contentLength) {
+        int k = recv(fd, buf, 8192, 0);
+        if(k == 0) break;
+        fwrite(buf, 1, k, F);
+        n += k;
     }
     sem_post(&f->writelock);
+    if(n < contentLength) send(fd, "Incomplete write: Client disconnected\n", strlen("Incomplete write: Client disconnected\n"), 0);
 }
 
-void ss_create(int fd, char* vpath, char* mtime) {
+struct file* ss_create(int fd, char* vpath, char* mtime) {
     char rpath[MAXPATHLENGTH + 1];
-    sprintf(rpath, "%s%llu", "storage/", n_file_entries + 1);
-    if(add_file_entry(vpath, rpath, mtime, true)) {
+    int pp = 1;
+    sprintf(rpath, "%s%llu", "storage/", n_file_entries + pp);
+    FILE* p = fopen(rpath, "r");
+    while(p) {
+        pp++;
+        sprintf(rpath, "%s%llu", "storage/", n_file_entries + pp);
+        p = fopen(rpath, "r");
+    }
+    fclose(p);
+    FILE* ff = fopen(rpath, "w");
+    fclose(ff);
+    struct file* f = add_file_entry(vpath, rpath, mtime, true);
+    if(f == NULL) {
         send(fd, "Error creating file\n", strlen("Error creating file\n"), 0);
     }
     else {
         send(fd, "File created\n", strlen("File created\n"), 0);
-        FILE* F = fopen(rpath, "w");
-        fclose(F);
     }
+    return f;
 }
 
 void ss_delete(int fd, char* vpath) {
@@ -150,6 +172,7 @@ void ss_delete(int fd, char* vpath) {
         send(fd, "Error deleting file\n", strlen("Error deleting file\n"), 0);
     }
     else {
+        remove_file_entry(vpath);
         send(fd, "File deleted\n", strlen("File deleted\n"), 0);
     }
 }
@@ -187,5 +210,45 @@ void ss_copy(int fd, char* vpath) {
 }
 
 void ss_info(int fd, char* vpath) {
-    
+    struct file* f = get_file(vpath);
+    if(f == NULL) {
+        send(fd, "File not found\n", strlen("File not found\n"), 0);
+        return;
+    }
+    FILE* F = fopen(f->rpath, "r");
+    if(F == NULL) {
+        send(fd, "File not found\n", strlen("File not found\n"), 0);
+        return;
+    }
+
+    // Get the file size
+    fseek(F, 0, SEEK_END);
+    long file_size = ftell(F);
+    rewind(F);
+
+    // Count the number of lines
+    int line_count = 0;
+    char c;
+    while ((c = fgetc(F)) != EOF) {
+        if (c == '\n') {
+            line_count++;
+        }
+    }
+    rewind(F);
+
+    // Send the file info to the client
+    char buffer[1024];
+    sprintf(buffer, "File size: %ld bytes\nNumber of lines: %d\nLast modified: %s\n", file_size, line_count, f->mtime);
+    send(fd, buffer, strlen(buffer), 0);
+
+    fclose(F);
+}
+
+void ss_update_mtime(int fd, char* vpath, char* mtime) {
+    struct file* f = get_file(vpath);
+    if(f == NULL) {
+        send(fd, "File not found\n", strlen("File not found\n"), 0);
+        return;
+    }
+    strcpy(f->mtime, mtime);
 }
