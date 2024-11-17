@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <semaphore.h>
 #include <netinet/in.h>
 #include <pthread.h>
@@ -57,6 +58,7 @@ typedef struct {
 typedef struct {
     char filename[MAX_FILENAME_LENGTH];
     int storage_server_id;
+    struct FileEntry *is_copy;
 } FileEntry;
 
 // Trie Node Structure
