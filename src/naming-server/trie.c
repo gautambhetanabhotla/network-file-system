@@ -1,7 +1,20 @@
-#include "trie.h"
+#include "main.h"
 
+TrieNode *create_trie_node()
+{
+    TrieNode *node = (TrieNode *)malloc(sizeof(TrieNode));
+    if (node)
+    {
+        node->file_entry = NULL;
+        for (int i = 0; i < 256; i++)
+        {
+            node->children[i] = NULL;
+        }
+    }
+    return node;
+}
 
-void insert_path(const char *path, int storage_server_id, TrieNode *root)
+void insert_path(const char *path, int* storage_server_ids, TrieNode *root)
 {
     TrieNode *current = root;
     for (int i = 0; path[i]; i++)
@@ -15,7 +28,11 @@ void insert_path(const char *path, int storage_server_id, TrieNode *root)
     {
         current->file_entry = (FileEntry *)malloc(sizeof(FileEntry));
         strcpy(current->file_entry->filename, path);
-        current->file_entry->storage_server_id = storage_server_id;
+        for(int i = 0; i < 3; i++){
+            current->file_entry->ss_ids[i] = storage_server_ids[i];
+            storage_servers[storage_server_ids[i]].file_count++;
+
+        }
         current->file_entry->is_copy = NULL;
     }
 }
@@ -31,7 +48,7 @@ int search_path(const char *path, TrieNode *root)
         current = current->children[index];
     }
     if (current->file_entry)
-        return current->file_entry->storage_server_id;
+        return current->file_entry->ss_ids[0];
     return -1; // Not found
 }
 
