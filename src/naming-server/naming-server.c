@@ -358,6 +358,7 @@ int main(int argc, char *argv[])
 
     // Load Trie and Cache from files
     load_trie("trie_data.bin",root);
+
     load_cache("cache_data.bin",cache);
 
     // Set up signal handlers to save data on exit
