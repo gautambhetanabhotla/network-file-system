@@ -152,15 +152,15 @@ void *handle_connection(void *arg)
             // Receive the content length (20 bytes)
             char content_length_str[21];
             bytes_received = recv(client_socket, content_length_str, 20, 0);
-            if (bytes_received != 20)
+            while (bytes_received < 20)
             {
-                perror("Failed to read content length");
-                close(client_socket);
-                return NULL;
+                int k = recv(client_socket, content_length_str + bytes_received, 20 - bytes_received, 0);
+                if(k <= 0) break;
+                bytes_received += k;
             }
             content_length_str[20] = '\0';
             int content_length = atoi(content_length_str);
-            printf("Content length: %d\n", content_length);
+            fprintf(stderr, "Content length: %d\n", content_length);
 
             // Add the content length to the accumulated buffer
             memcpy(accumulated_buffer + accumulated_length, content_length_str, 20);
@@ -179,6 +179,8 @@ void *handle_connection(void *arg)
                     return NULL;
                 }
                 buffer[bytes_received] = '\0';
+                fprintf(stderr, "Received: %s\n", buffer);
+                fprintf(stderr, "Total bytes read: %d\n", bytes_received);
 
                 // Skip blank lines
                 if (strcmp(buffer, "\n") == 0 || strcmp(buffer, "\r\n") == 0)
@@ -192,6 +194,7 @@ void *handle_connection(void *arg)
                     memcpy(accumulated_buffer + accumulated_length, buffer, bytes_received);
                     accumulated_length += bytes_received;
                     accumulated_buffer[accumulated_length] = '\0';
+                    fprintf(stderr, accumulated_buffer);
                 }
                 else
                 {
