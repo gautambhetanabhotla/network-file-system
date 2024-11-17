@@ -63,6 +63,7 @@ void send_paths(int nm_sockfd) {
     fseek(pathsfile, 0, SEEK_SET);
     char CL[21]; CL[20] = '\0';
     sprintf(CL, "%ld", byte_count);
+    fprintf(stderr, "SENDING CONTENT LENGTH %ld\n", byte_count);
     send(nm_sockfd, CL, sizeof(CL) - 1, 0);
     while(!feof(pathsfile)) {
         int flag = 0;
@@ -143,10 +144,10 @@ int main(int argc, char* argv[]) {
 
     // Initialise stuff with naming server
     nm_sockfd = connect_to_naming_server(argc, argv);
-    send(nm_sockfd, "STORAGESERVER\n", strlen("STORAGESERVER\n"), 0);
+    send(nm_sockfd, "STORAGESERVER", strlen("STORAGESERVER"), 0);
     // Send the port you're using to listen for clients
-    char port_str[6];
-    snprintf(port_str, 5, "%d", PORT);
+    char port_str[6] = {'\0'};
+    sprintf(port_str, "%d", PORT);
     send(nm_sockfd, port_str, sizeof(port_str) - 1, 0);
     // Send the list of accessible paths
     send_paths(nm_sockfd);
