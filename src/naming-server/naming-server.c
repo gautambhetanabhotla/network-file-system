@@ -1,7 +1,4 @@
-#include "naming-server.h"
-#include "cache.h"
-#include "trie.h"
-
+#include "main.h"
 
 // Global port
 TrieNode *root;
@@ -87,7 +84,10 @@ void handle_storage_server(int client_socket, char *buffer)
     {
         if (strcmp(token, "STOP") == 0)
             break;
-        insert_path(token, ss_id,root);
+        
+        int chosen_servers[3];
+        choose_least_full_servers(chosen_servers);
+        insert_path(token, chosen_servers,root);
     }
 }
 
@@ -269,7 +269,7 @@ void handle_client(int client_socket, char *initial_buffer) {
             // Check in cache
             FileEntry *entry = cache_get(filepath, cache);
             if (entry != NULL) {
-                int ss_id = entry->storage_server_id;
+                int ss_id = entry->ss_ids[0];
                 char response[256];
                 snprintf(response, sizeof(response), "%s\n%d\n",
                          storage_servers[ss_id].ip_address,
@@ -281,7 +281,7 @@ void handle_client(int client_socket, char *initial_buffer) {
                     // Update cache
                     FileEntry *new_entry = malloc(sizeof(FileEntry));
                     strcpy(new_entry->filename, filepath);
-                    new_entry->storage_server_id = ss_id;
+                    new_entry->ss_ids[0] = ss_id;
                     cache_put(filepath, new_entry, cache);
 
                     // Send storage server info

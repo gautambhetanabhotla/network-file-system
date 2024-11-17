@@ -1,4 +1,18 @@
-#include "trie.h"
+#include "main.h"
+
+TrieNode *create_trie_node()
+{
+    TrieNode *node = (TrieNode *)malloc(sizeof(TrieNode));
+    if (node)
+    {
+        node->file_entry = NULL;
+        for (int i = 0; i < 256; i++)
+        {
+            node->children[i] = NULL;
+        }
+    }
+    return node;
+}
 
 void insert_path(const char *path, int* storage_server_ids, TrieNode *root)
 {

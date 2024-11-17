@@ -1,4 +1,4 @@
-#include "cache.h"
+#include "main.h"
 
 struct lru_cache *init_cache(int max_size)
 {
