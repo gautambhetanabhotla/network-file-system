@@ -16,5 +16,6 @@ void insert_path(const char *path, int storage_server_id, TrieNode *root);
 int search_path(const char *path, TrieNode *root);
 void save_trie(const char *filename, TrieNode *root);
 void load_trie(const char *filename, TrieNode *root);
+void remove_path(const char *path, TrieNode *root);
 
 #endif
