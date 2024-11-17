@@ -117,6 +117,27 @@ void *handle_connection(void *arg)
         // Check if the message is from a storage server
         if (strncmp(buffer, "STORAGESERVER", 13) == 0)
         {
+            // Add "STORAGESERVER" to the accumulated buffer
+            memcpy(accumulated_buffer + accumulated_length, buffer, bytes_received);
+            accumulated_length += bytes_received;
+            accumulated_buffer[accumulated_length] = '\0';
+
+            // Read the port number (5 bytes)
+            char port_str[6];
+            if (recv(client_socket, port_str, 5, 0) != 5)
+            {
+                perror("Failed to read port number");
+                close(client_socket);
+                return NULL;
+            }
+            port_str[5] = '\0';
+            printf("Port: %s\n", port_str);
+
+            // Add the port number to the accumulated buffer
+            memcpy(accumulated_buffer + accumulated_length, port_str, 5);
+            accumulated_length += 5;
+            accumulated_buffer[accumulated_length] = '\0';
+
             // Read the content length (20 bytes)
             char content_length_str[21];
             int content_length;
@@ -128,6 +149,12 @@ void *handle_connection(void *arg)
             }
             content_length_str[20] = '\0';
             content_length = atoi(content_length_str);
+            printf("Content length: %d\n", content_length);
+
+            // Add the content length to the accumulated buffer
+            memcpy(accumulated_buffer + accumulated_length, content_length_str, 20);
+            accumulated_length += 20;
+            accumulated_buffer[accumulated_length] = '\0';
 
             // Read the specified amount of data based on the content length
             int total_bytes_read = 0;
@@ -154,6 +181,7 @@ void *handle_connection(void *arg)
                     memcpy(accumulated_buffer + accumulated_length, buffer, bytes_received);
                     accumulated_length += bytes_received;
                     accumulated_buffer[accumulated_length] = '\0';
+                    printf("Accumulated: %s\n", accumulated_buffer);
                 }
                 else
                 {
