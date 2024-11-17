@@ -40,5 +40,5 @@ clean:
 
 req:
 	gcc tests/send_req_to_ss.c
-	./a.out
+	./a.out 192.168.169.210 8080
 	rm -f a.out
