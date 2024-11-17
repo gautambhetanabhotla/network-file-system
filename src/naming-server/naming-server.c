@@ -68,7 +68,6 @@ int register_storage_server(const char *ip, int port)
 
 void handle_storage_server(int client_socket, char *buffer)
 {
-    printf("Received request from Storage Server, %s\n", buffer);
     char *token = strtok(buffer, " \n");
     token = strtok(NULL, " \n"); // Get port
     int port = atoi(token);
@@ -109,8 +108,16 @@ void *handle_connection(void *arg)
     int accumulated_length = 0;
     int bytes_received;
 
-    while ((bytes_received = recv(client_socket, buffer, sizeof(buffer) - 1, 0)) > 0)
+    while (1)
     {
+        // Receive 13 bytes to check for the "STORAGESERVER" flag
+        bytes_received = recv(client_socket, buffer, 13, 0);
+        if (bytes_received <= 0)
+        {
+            perror("Failed to read STORAGESERVER flag");
+            close(client_socket);
+            return NULL;
+        }
         buffer[bytes_received] = '\0';
         printf("Received: %s\n", buffer);
 
@@ -121,10 +128,13 @@ void *handle_connection(void *arg)
             memcpy(accumulated_buffer + accumulated_length, buffer, bytes_received);
             accumulated_length += bytes_received;
             accumulated_buffer[accumulated_length] = '\0';
+            fprintf(stderr, "Accumulated buffer: %s\n", accumulated_buffer);
 
-            // Read the port number (5 bytes)
+
+            // Receive the port number (5 bytes)
             char port_str[6];
-            if (recv(client_socket, port_str, 5, 0) != 5)
+            bytes_received = recv(client_socket, port_str, 5, 0);
+            if (bytes_received != 5)
             {
                 perror("Failed to read port number");
                 close(client_socket);
@@ -138,17 +148,17 @@ void *handle_connection(void *arg)
             accumulated_length += 5;
             accumulated_buffer[accumulated_length] = '\0';
 
-            // Read the content length (20 bytes)
+            // Receive the content length (20 bytes)
             char content_length_str[21];
-            int content_length;
-            if (recv(client_socket, content_length_str, 20, 0) != 20)
+            bytes_received = recv(client_socket, content_length_str, 20, 0);
+            if (bytes_received != 20)
             {
                 perror("Failed to read content length");
                 close(client_socket);
                 return NULL;
             }
             content_length_str[20] = '\0';
-            content_length = atoi(content_length_str);
+            int content_length = atoi(content_length_str);
             printf("Content length: %d\n", content_length);
 
             // Add the content length to the accumulated buffer
@@ -156,7 +166,7 @@ void *handle_connection(void *arg)
             accumulated_length += 20;
             accumulated_buffer[accumulated_length] = '\0';
 
-            // Read the specified amount of data based on the content length
+            // Receive the specified amount of data based on the content length
             int total_bytes_read = 0;
             while (total_bytes_read < content_length)
             {
@@ -181,7 +191,6 @@ void *handle_connection(void *arg)
                     memcpy(accumulated_buffer + accumulated_length, buffer, bytes_received);
                     accumulated_length += bytes_received;
                     accumulated_buffer[accumulated_length] = '\0';
-                    printf("Accumulated: %s\n", accumulated_buffer);
                 }
                 else
                 {
