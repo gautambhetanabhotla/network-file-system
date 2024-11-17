@@ -105,13 +105,14 @@ void *handle_connection(void *arg)
     free(arg);
 
     char buffer[1024];
-    char accumulated_buffer[8192]; // Larger buffer to accumulate data
+    char accumulated_buffer[8192] = {0}; // Larger buffer to accumulate data
     int accumulated_length = 0;
     int bytes_received;
 
     while (1)
     {
         // Receive 13 bytes to check for the "STORAGESERVER" flag
+        memset(buffer, 0, sizeof(buffer)); // Clear buffer
         bytes_received = recv(client_socket, buffer, 13, 0);
         if (bytes_received <= 0)
         {
@@ -131,46 +132,42 @@ void *handle_connection(void *arg)
             accumulated_buffer[accumulated_length] = '\0';
             fprintf(stderr, "Accumulated buffer: %s\n", accumulated_buffer);
 
-
             // Receive the port number (5 bytes)
-            char port_str[6];
-            bytes_received = recv(client_socket, port_str, 5, 0);
+            memset(buffer, 0, sizeof(buffer)); // Clear buffer
+            bytes_received = recv(client_socket, buffer, 5, 0);
             if (bytes_received != 5)
             {
                 perror("Failed to read port number");
                 close(client_socket);
                 return NULL;
             }
-            port_str[5] = '\0';
-            printf("Port: %s\n", port_str);
+            buffer[bytes_received] = '\0';
+            printf("Port: %s\n", buffer);
 
             // Add the port number to the accumulated buffer
-            memcpy(accumulated_buffer + accumulated_length, port_str, 5);
-            accumulated_length += 5;
+            memcpy(accumulated_buffer + accumulated_length, buffer, bytes_received);
+            accumulated_length += bytes_received;
             accumulated_buffer[accumulated_length] = '\0';
 
             // Receive the content length (20 bytes)
-            char content_length_str[21];
-            bytes_received = recv(client_socket, content_length_str, 20, 0);
+            memset(buffer, 0, sizeof(buffer)); // Clear buffer
+            bytes_received = recv(client_socket, buffer, 20, 0);
             while (bytes_received < 20)
             {
-                int k = recv(client_socket, content_length_str + bytes_received, 20 - bytes_received, 0);
-                if(k <= 0) break;
+                int k = recv(client_socket, buffer + bytes_received, 20 - bytes_received, 0);
+                if (k <= 0) break;
                 bytes_received += k;
             }
-            content_length_str[20] = '\0';
-            int content_length = atoi(content_length_str);
+            buffer[bytes_received] = '\0';
+            int content_length = atoi(buffer);
             fprintf(stderr, "Content length: %d\n", content_length);
 
-            // Add the content length to the accumulated buffer
-            memcpy(accumulated_buffer + accumulated_length, content_length_str, 20);
-            accumulated_length += 20;
-            accumulated_buffer[accumulated_length] = '\0';
 
             // Receive the specified amount of data based on the content length
             int total_bytes_read = 0;
             while (total_bytes_read < content_length)
             {
+                memset(buffer, 0, sizeof(buffer)); // Clear buffer
                 bytes_received = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
                 if (bytes_received <= 0)
                 {
@@ -180,7 +177,7 @@ void *handle_connection(void *arg)
                 }
                 buffer[bytes_received] = '\0';
                 fprintf(stderr, "Received: %s\n", buffer);
-                fprintf(stderr, "Total bytes read: %d\n", bytes_received);
+                fprintf(stderr, "bytes recvd: %d\n", bytes_received);
 
                 // Skip blank lines
                 if (strcmp(buffer, "\n") == 0 || strcmp(buffer, "\r\n") == 0)
@@ -191,10 +188,14 @@ void *handle_connection(void *arg)
                 // Accumulate data in the buffer
                 if (accumulated_length + bytes_received < sizeof(accumulated_buffer) - 1)
                 {
+                    fprintf(stderr, "Accumulating data...\n");
+                    fprintf(stderr, "buffer %s\n", buffer);
+                    fprintf(stderr, "Accumulated length: %d, bytes received: %d\n", accumulated_length, bytes_received);
                     memcpy(accumulated_buffer + accumulated_length, buffer, bytes_received);
+                    fprintf(stderr, "Accumulated buffer: %s\n", accumulated_buffer);
                     accumulated_length += bytes_received;
                     accumulated_buffer[accumulated_length] = '\0';
-                    fprintf(stderr, accumulated_buffer);
+                    fprintf(stderr, "Accumulated buffer: %s\n", accumulated_buffer);
                 }
                 else
                 {

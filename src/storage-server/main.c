@@ -105,6 +105,8 @@ void send_paths(int nm_sockfd) {
         add_file_entry(vpath, rpath, mtime, false);
         send(nm_sockfd, vpath, strlen(vpath), 0);
         send(nm_sockfd, " ", 1, 0);
+        send(nm_sockfd, rpath, strlen(vpath), 0);
+        send(nm_sockfd, " ", 1, 0);
         send(nm_sockfd, mtime, strlen(mtime), 0);
         send(nm_sockfd, "\n", 1, 0);
         vpath[0] = '\0'; rpath[0] = '\0'; mtime[0] = '\0';
@@ -150,7 +152,7 @@ int main(int argc, char* argv[]) {
     sprintf(port_str, "%d", PORT);
     send(nm_sockfd, port_str, sizeof(port_str) - 1, 0);
     // Send the list of accessible paths
-    send_paths(nm_sockfd);
+    send_paths(nm_sockfd); 
     // send(nm_sockfd, "STOP,,,\n", strlen("STOP,,,\n"), 0);
 
     while(1) {

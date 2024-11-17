@@ -8,7 +8,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-#define UNIX_START_TIME "1970-01-01 00:00:00"
+// FORMAT: YYYY-MM-DDTHH:MM:SS
+#define UNIX_START_TIME "1970-01-01T00:00:00"
 
 extern struct file** file_entries;
 extern unsigned long long int n_file_entries;
@@ -18,7 +19,7 @@ enum request_type {
 };
 
 enum exit_status {
-    E_SUCCESS, E_FILE_DOESNT_EXIST, E_INCOMPLETE_WRITE, E_FILE_ALREADY_EXISTS
+    E_SUCCESS, E_FILE_DOESNT_EXIST, E_INCOMPLETE_WRITE, E_FILE_ALREADY_EXISTS, E_WRONG_SS, E_FAULTY_SS
 };
 
 /*
@@ -63,10 +64,6 @@ Header size = 10 + 4096 + 20 = 4126
 
 extern int nm_sockfd;
 
-void sendToNM(int fd, int reqID, enum exit_status status, char* vpath) {
-    
-}
-
 void ns_synchronize(int fd, char* vpath) {
     
 }
@@ -102,33 +99,31 @@ void* handle_client(void* arg) {
     while(*fp != '\n') fp++;
     *fp = '\0';
     fp++;
-    int remainingContentLength = vpath + CLD - fp; // COULD CAUSE ERRORS, CHECK
+    int remainingContentLength = fp - vpath + CLD; // COULD CAUSE ERRORS, CHECK
     int requestID = atoi(reqdata + 1);
     switch(reqdata[0] - '0') {
         case READ:
-            ss_read(client_sockfd, vpath);
+            ss_read(client_sockfd, vpath, requestID);
             break;
         case WRITE:
-            ss_write(client_sockfd, vpath, contentLength);
+            ss_write(client_sockfd, vpath, contentLength, requestID);
             break;
         case CREATE:
-            char mtime[21];
-            recv(client_sockfd, mtime, sizeof(mtime) - 1, 0);
-            ss_create(client_sockfd, vpath, mtime);
+            ss_create(client_sockfd, vpath, UNIX_START_TIME, requestID);
             break;
         case DELETE:
-            ss_delete(client_sockfd, vpath);
+            ss_delete(client_sockfd, vpath, requestID);
             break;
         case STREAM:
-            ss_stream(client_sockfd, vpath);
+            ss_stream(client_sockfd, vpath, requestID);
             break;
         case COPY:
             char vpath2[MAXPATHLENGTH + 1];
             recv(client_sockfd, vpath2, sizeof(vpath2) - 1, 0);
-            ss_copy(client_sockfd, vpath, vpath2);
+            ss_copy(client_sockfd, vpath, vpath2, requestID);
             break;
         case INFO:
-            ss_info(client_sockfd, vpath);
+            ss_info(client_sockfd, vpath, requestID);
             break;
         default:
             send(client_sockfd, "tf u sending brother??????????\n", strlen("tf u sending brother??????????\n"), 0);
@@ -142,14 +137,26 @@ void* handle_client(void* arg) {
 void ss_read(int fd, char* vpath) {
     struct file* f = get_file(vpath);
     if(!f) {
-        send(fd, "File not found\n", strlen("File not found\n"), 0);
+        long file_size = 0;
+        char header[20] = {'\0'}; header[0] = '0' + E_WRONG_SS;
+        sprintf(header + 10, "%ld", file_size);
+        send(fd, header, 20, 0);
         return;
     }
     FILE* F = fopen(f->rpath, "r");
     if(!F) {
-        send(fd, "File not found\n", strlen("File not found\n"), 0);
+        long file_size = 0;
+        char header[20] = {'\0'}; header[0] = '0' + E_FAULTY_SS;
+        sprintf(header + 10, "%ld", file_size);
+        send(fd, header, 20, 0);
         return;
     }
+    fseek(F, 0, SEEK_END);
+    long file_size = ftell(F);
+    rewind(F);
+    char header[20] = {'\0'}; header[0] = '0';
+    sprintf(header + 10, "%ld", file_size);
+    send(fd, header, 20, 0);
     char buf[8193]; int n = 0;
     sem_wait(&f->serviceQueue);
     sem_wait(&f->lock);
