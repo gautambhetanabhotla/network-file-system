@@ -176,6 +176,12 @@ void handle_client(int client_socket, char *initial_buffer) {
                 for(int i = 0; i < 3; i++){
                     new_entry->ss_ids[i] = chosen_servers[i];
                 }
+
+                time_t now = time(NULL);
+                struct tm *tm_info = gmtime(&now);  // Use localtime(&now) for local time
+
+                strftime(new_entry->last_modified, sizeof(new_entry->last_modified), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+
                 cache_put(full_path, new_entry, cache);
 
                 // TODO: Send CREATE command to storage server
@@ -264,7 +270,6 @@ void handle_client(int client_socket, char *initial_buffer) {
         }
     } else if (strcmp(command, "READ") == 0 || strcmp(command, "STREAM") == 0 || strcmp(command, "WRITE") == 0) {
         char *filepath = strtok_r(NULL, "\n", &saveptr);
-
         if (filepath) {
             // Check in cache
             FileEntry *entry = cache_get(filepath, cache);
@@ -274,6 +279,12 @@ void handle_client(int client_socket, char *initial_buffer) {
                 snprintf(response, sizeof(response), "%s\n%d\n",
                          storage_servers[ss_id].ip_address,
                          storage_servers[ss_id].port);
+                if(strcmp(command, "WRITE")==0){
+                    time_t now = time(NULL);
+                    struct tm *tm_info = gmtime(&now);  // Use localtime(&now) for local time
+
+                    strftime(entry->last_modified, sizeof(entry->last_modified), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+                }
                 send(client_socket, response, strlen(response), 0);
             } else {
                 int ss_id = search_path(filepath, root);
@@ -289,6 +300,12 @@ void handle_client(int client_socket, char *initial_buffer) {
                     snprintf(response, sizeof(response), "%s\n%d\n",
                              storage_servers[ss_id].ip_address,
                              storage_servers[ss_id].port);
+                    if(strcmp(command, "WRITE")==0){
+                        time_t now = time(NULL);
+                        struct tm *tm_info = gmtime(&now);  // Use localtime(&now) for local time
+
+                        strftime(entry->last_modified, sizeof(entry->last_modified), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+                    }
                     send(client_socket, response, strlen(response), 0);
                 } else {
                     const char *msg = "Error: File not found\n";
