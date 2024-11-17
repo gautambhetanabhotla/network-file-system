@@ -147,7 +147,6 @@ void *handle_connection(void *arg)
         // Add "STORAGESERVER" to the accumulated buffer
         memcpy(accumulated_buffer + accumulated_length, buffer, 13);
         accumulated_length += 13;
-        accumulated_buffer[accumulated_length] = '\0';
 
         // Receive the port number (5 bytes)
         char port_str[6];
@@ -164,7 +163,6 @@ void *handle_connection(void *arg)
         // Add the port number to the accumulated buffer
         memcpy(accumulated_buffer + accumulated_length, port_str, 5);
         accumulated_length += 5;
-        //accumulated_buffer[accumulated_length] = '\0';
 
         // Receive the content length (20 bytes)
         char content_length_str[21];
@@ -180,13 +178,12 @@ void *handle_connection(void *arg)
         printf("Content length: %d\n", content_length);
 
         // Add the content length to the accumulated buffer
-        
         memcpy(accumulated_buffer + accumulated_length, content_length_str, 20);
         accumulated_length += 20;
-        accumulated_buffer[accumulated_length] = '\0';
 
         // Receive the specified amount of data based on the content length
         int total_bytes_read = 0;
+        int token_counter = 0;
         while (total_bytes_read < content_length)
         {
             ssize_t chunk_size = (content_length - total_bytes_read) > (sizeof(buffer) - 1) ? (sizeof(buffer) - 1) : (content_length - total_bytes_read);
@@ -204,24 +201,52 @@ void *handle_connection(void *arg)
                 return NULL;
             }
 
-            // Accumulate data in the buffer
-            if (accumulated_length + bytes_received < sizeof(accumulated_buffer) - 1)
+            buffer[bytes_received] = '\0';
+            fprintf(stderr, "Received: %s\n", buffer);
+            // Split the buffer into tokens based on spaces and newlines
+            char *token = strtok(buffer, " \n");
+            while (token != NULL)
             {
-                fprintf(stderr, "Received %ld bytes\n", bytes_received);
-                fprintf(stderr, "Buffer: %s\n", buffer);
-                memcpy(accumulated_buffer + accumulated_length, buffer, bytes_received);
-                accumulated_length += bytes_received;
-                accumulated_buffer[accumulated_length] = '\0';
-                fprintf(stderr, "accumulated buffer: %s\n", accumulated_buffer);
-            }
-            else
-            {
-                fprintf(stderr, "Accumulated buffer overflow\n");
-                close(client_socket);
-                return NULL;
+                // Skip blank tokens
+                if (strlen(token) == 0)
+                {
+                    token = strtok(NULL, " \n");
+                    continue;
+                }
+
+                // Skip every second token
+                if (token_counter % 2 == 0)
+                {
+                    // Accumulate data in the buffer
+                    if (accumulated_length + strlen(token) < sizeof(accumulated_buffer) - 1)
+                    {
+                        memcpy(accumulated_buffer + accumulated_length, token, strlen(token));
+                        accumulated_length += strlen(token);
+                        accumulated_buffer[accumulated_length] = ' '; // Add space character
+                        accumulated_length++;
+                    }
+                    else
+                    {
+                        fprintf(stderr, "Accumulated buffer overflow\n");
+                        close(client_socket);
+                        return NULL;
+                    }
+                }
+                token_counter++;
+                token = strtok(NULL, " \n");
             }
 
             total_bytes_read += bytes_received;
+        }
+
+        // Add null terminator at the end of the accumulated buffer
+        if (accumulated_length < sizeof(accumulated_buffer))
+        {
+            accumulated_buffer[accumulated_length] = '\0';
+        }
+        else
+        {
+            accumulated_buffer[sizeof(accumulated_buffer) - 1] = '\0';
         }
 
         // Debug print of the accumulated buffer
@@ -241,21 +266,8 @@ void *handle_connection(void *arg)
     }
     else
     {
-        // Wait until at least one storage server is connected
-        sem_wait(&storage_server_sem);
-        sem_post(&storage_server_sem); // Keep semaphore value unchanged
-
+        // Handle client connections...
         handle_client(client_socket, buffer);
-    }
-
-    if (bytes_received == 0)
-    {
-        // Client closed the connection
-        printf("Client disconnected.\n");
-    }
-    else if (bytes_received < 0)
-    {
-        perror("recv");
     }
 
     close(client_socket);
