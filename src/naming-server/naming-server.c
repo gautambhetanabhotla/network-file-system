@@ -45,6 +45,7 @@ void insert_path(const char *path, int storage_server_id)
         current->file_entry = (FileEntry *)malloc(sizeof(FileEntry));
         strcpy(current->file_entry->filename, path);
         current->file_entry->storage_server_id = storage_server_id;
+        current->file_entry->is_copy = NULL;
     }
 }
 
@@ -71,6 +72,7 @@ int register_storage_server(const char *ip, int port)
     storage_servers[id].id = id;
     strcpy(storage_servers[id].ip_address, ip);
     storage_servers[id].port = port;
+    printf("Registered Storage Server %d: %s:%d\n", id, ip, port);
     return id;
 }
 
@@ -121,6 +123,7 @@ void load_trie(const char *filename)
         return;
     }
     // Recursively load trie nodes
+    printf("Loading Trie from file...\n");
     void load_node(TrieNode * node, FILE * file)
     {
         uint8_t has_file_entry;
@@ -129,6 +132,7 @@ void load_trie(const char *filename)
         {
             node->file_entry = (FileEntry *)malloc(sizeof(FileEntry));
             fread(node->file_entry, sizeof(FileEntry), 1, file);
+            printf("Loaded file entry: %s\n", node->file_entry->filename);
         }
         for (int i = 0; i < 256; i++)
         {
@@ -253,6 +257,7 @@ void *handle_connection(void *arg)
         pthread_mutex_lock(&storage_server_mutex);
         if (storage_server_count == 1)
         {
+            printf("At least one storage server is connected\n");
             sem_post(&storage_server_sem);
         }
         pthread_mutex_unlock(&storage_server_mutex);
@@ -359,6 +364,17 @@ int main(int argc, char *argv[])
     }
 
     int port = atoi(argv[1]);
+
+    char hostbuffer[256];
+    gethostname(hostbuffer, sizeof(hostbuffer));
+
+    // Get host information
+    struct hostent *host_entry = gethostbyname(hostbuffer);
+
+    // Convert the network address to a string
+    char *IPbuffer = inet_ntoa(*((struct in_addr *)host_entry->h_addr_list[0]));
+
+    printf("Naming Server is running on IP: %s, Port: %d\n", IPbuffer, port);
 
     // Initialize Trie
     root = create_trie_node();
