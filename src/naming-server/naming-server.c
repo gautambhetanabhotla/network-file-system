@@ -159,7 +159,6 @@ void *handle_connection(void *arg)
         }
         port_str[5] = '\0';
         printf("Port: %s\n", port_str);
-
         // Add the port number to the accumulated buffer
         memcpy(accumulated_buffer + accumulated_length, port_str, 5);
         accumulated_length += 5;
@@ -213,7 +212,6 @@ void *handle_connection(void *arg)
                     token = strtok(NULL, " \n");
                     continue;
                 }
-
                 // Skip every second token
                 if (token_counter % 2 == 0)
                 {
