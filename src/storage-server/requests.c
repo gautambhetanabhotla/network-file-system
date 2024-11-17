@@ -64,7 +64,7 @@ Header size = 10 + 4096 + 20 = 4126
 
 extern int nm_sockfd;
 
-void ns_synchronize(int fd, char* vpath) {
+void ns_synchronize(int fd, char* vpath, int requestID) {
     
 }
 
@@ -134,7 +134,7 @@ void* handle_client(void* arg) {
     return NULL;
 }
 
-void ss_read(int fd, char* vpath) {
+void ss_read(int fd, char* vpath, int requestID) {
     struct file* f = get_file(vpath);
     if(!f) {
         long file_size = 0;
@@ -174,9 +174,9 @@ void ss_read(int fd, char* vpath) {
     sem_post(&f->lock);
 }
 
-void ss_write(int fd, char* vpath, int contentLength) {
+void ss_write(int fd, char* vpath, int contentLength, int requestID) {
     struct file* f = get_file(vpath);
-    if(!f) f = ss_create(fd, vpath, UNIX_START_TIME);
+    if(!f) f = ss_create(fd, vpath, UNIX_START_TIME, requestID);
     if(!f) {
         send(fd, "File not found\n", strlen("File not found\n"), 0);
         return;
@@ -196,7 +196,7 @@ void ss_write(int fd, char* vpath, int contentLength) {
     if(n < contentLength) send(fd, "Incomplete write: Client disconnected\n", strlen("Incomplete write: Client disconnected\n"), 0);
 }
 
-struct file* ss_create(int fd, char* vpath, char* mtime) {
+struct file* ss_create(int fd, char* vpath, char* mtime, int requestID) {
     char rpath[MAXPATHLENGTH + 1];
     int pp = 1;
     sprintf(rpath, "%s%llu", "storage/", n_file_entries + pp);
@@ -223,7 +223,7 @@ struct file* ss_create(int fd, char* vpath, char* mtime) {
     return f;
 }
 
-void ss_delete(int fd, char* vpath) {
+void ss_delete(int fd, char* vpath, int requestID) {
     struct file* f = get_file(vpath);
     if(!f) send(fd, "File not found\n", strlen("File not found\n"), 0);
     else if(remove(f->rpath)) {
@@ -235,7 +235,7 @@ void ss_delete(int fd, char* vpath) {
     }
 }
 
-void ss_stream(int fd, char* vpath) {
+void ss_stream(int fd, char* vpath, int requestID) {
     struct file* f = get_file(vpath);
     if(!f) {
         send(fd, "File not found\n", strlen("File not found\n"), 0);
@@ -263,11 +263,11 @@ void ss_stream(int fd, char* vpath) {
     sem_post(&f->lock);
 }
 
-void ss_copy(int fd, char* vpath1, char* vpath2) {
+void ss_copy(int fd, char* vpath1, char* vpath2, int requestID) {
 
 }
 
-void ss_info(int fd, char* vpath) {
+void ss_info(int fd, char* vpath, int requestID) {
     struct file* f = get_file(vpath);
     if(f == NULL) {
         send(fd, "File not found\n", strlen("File not found\n"), 0);
@@ -302,7 +302,7 @@ void ss_info(int fd, char* vpath) {
     fclose(F);
 }
 
-void ss_update_mtime(int fd, char* vpath, char* mtime) {
+void ss_update_mtime(int fd, char* vpath, char* mtime, int requestID) {
     struct file* f = get_file(vpath);
     if(f == NULL) {
         send(fd, "File not found\n", strlen("File not found\n"), 0);
