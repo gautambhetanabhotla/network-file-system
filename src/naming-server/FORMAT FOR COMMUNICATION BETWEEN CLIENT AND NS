@@ -1,11 +1,41 @@
 FORMAT FOR COMMUNICATION BETWEEN CLIENT AND NS
 
-Format (to NS)	Format (from NS)
-CREATE\n<folderpath>\n<f_path (file or folder)>\n	<success or failure message>\n
-DELETE\n<folderpath>\n<f_path (file or folder)>\n	<success or failure message>\n
-COPY\n<sourcefilepath>\n<destfolderpath>\n	<success or failure message>\n
-INFO\n<filepath>\n	<info about file>\n<success or failure message>\n
-LIST\n<folderpath>\n	<full list of items>\n<success or failure message>\n
-READ\n<filepath>\n	<ss_ip>\n<ss_portnum>\n
-STREAM\n<audiofilepath>\n	<ss_ip>\n<ss_portnum>\n
-WRITE\n<destfilepath>\n	<ss_ip>\n<ss_portnum>\n
+1. Format (client to NS)	
+CREATE\n<folderpath>\n<f_path (file or folder)>\n	
+Format (Output from NS to client)
+<success or failure message>\n
+
+Format (client to NS)
+DELETE\n<folderpath>\n<f_path (file or folder)>\n	
+Format (Output from NS to client)
+<success or failure message>\n
+
+Format (client to NS)
+COPY\n<sourcefilepath>\n<destfolderpath>\n	
+Format (Output from NS to client)
+<success or failure message>\n
+
+Format (client to NS)
+INFO\n<filepath>\n	
+Format (Output from NS to client)
+<info about file>\n<success or failure message>\n
+
+Format (client to NS)
+LIST\n<folderpath>\n	
+Format (Output from NS to client)
+<full list of items>\n<success or failure message>\n
+
+Format (client to NS)
+READ\n<filepath>\n	
+Format (Output from NS to client)
+<ss_ip>\n<ss_portnum>\n
+
+Format (client to NS)
+STREAM\n<audiofilepath>\n	
+Format (Output from NS to client)
+<ss_ip>\n<ss_portnum>\n
+
+Format (client to NS)
+WRITE\n<destfilepath>\n	
+Format (Output from NS to client)
+<ss_ip>\n<ss_portnum>\n
