@@ -68,6 +68,7 @@ int register_storage_server(const char *ip, int port)
 
 void handle_storage_server(int client_socket, char *buffer)
 {
+    printf("Received request from Storage Server, %s\n", buffer);
     char *token = strtok(buffer, " \n");
     token = strtok(NULL, " \n"); // Get port
     int port = atoi(token);
