@@ -209,6 +209,10 @@ struct file* ss_create(int fd, char* vpath, char* mtime) {
     else {
         send(fd, "File created\n", strlen("File created\n"), 0);
     }
+    char CL[21]; CL[20] = '\0';
+    sprintf(CL, "%ld", strlen(vpath));
+    send(nm_sockfd, CL, sizeof(CL) - 1, 0);
+    send(nm_sockfd, vpath, strlen(vpath), 0);
     return f;
 }
 
