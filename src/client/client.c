@@ -61,6 +61,7 @@ int ns_connect(const char *server_ip, int server_port) {
     while (attempt < TIMEOUT) {
         printf("Trying to connect...\n");
         if (connect(ns_socket, (struct sockaddr *)&server_address, sizeof(server_address)) == 0) {
+            send(ns_socket, "CLIENT\0\0\0\0\0\0\0", 13);
             printf("Connected to naming server at %s:%d\n", server_ip, server_port);
             return 0;
         }
