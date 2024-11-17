@@ -2,7 +2,7 @@
 #include <stdbool.h>
 #define TIMEOUT 5000 // TIMEOUT in milliseconds, if ACK is not received in TIMEOUT 
 #define BUFFER_SIZE 1000
-#define FILEPATH_SIZE 4096
+#define FILEPATH_SIZE 300
 
 // accepted operations: 
 //READ filepath
@@ -18,12 +18,13 @@
 int main(int argc, char* argv[]) {
     char request[BUFFER_SIZE];
     bool synchronous;
-    while(1) {
+    while(1){
         synchronous = false;
         if (fgets(request, sizeof(request), stdin) == NULL) {
             printf("Error reading input\n");
             continue;
         }
+
 
         if (strchr(request, '\n') == NULL) {
             // Flush remaining characters if input exceeded buffer size
@@ -33,7 +34,8 @@ int main(int argc, char* argv[]) {
             continue;
         } 
 
-        // Check if --SYNC flag is present
+
+                // Check if --SYNC flag is present
         if (strstr(request, "--SYNC") != NULL) {
             synchronous = true;
             // Remove --SYNC from the request for easier parsing
@@ -60,7 +62,8 @@ int main(int argc, char* argv[]) {
         }
         else if (strcmp(operation, "STREAM") == 0 && num_args == 2) {
             stream(arg1);
-        }
+        } 
+
         else if (strcmp(operation, "CREATE") == 0 && num_args == 3) {
             create(arg1, arg2);
         } 
@@ -70,9 +73,11 @@ int main(int argc, char* argv[]) {
         else if (strcmp(operation, "COPY") == 0 && num_args == 3) {
             copy(arg1, arg2, synchronous);
         } 
+
         else {
             printf("ERROR: Invalid operation or incorrect arguments.\n");
         }
-    }
+    }   
+
     return 0;
 }
