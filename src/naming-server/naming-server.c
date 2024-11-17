@@ -16,25 +16,9 @@ void signal_handler(int sig)
 {
     printf("Received signal %d, saving data and exiting...\n", sig);
     save_trie("trie_data.bin", root);
-    save_cache("cache_data.bin");
+    save_cache("cache_data.bin", cache);
     exit(0);
 }
-
-// Create a new Trie Node
-TrieNode *create_trie_node()
-{
-    TrieNode *node = (TrieNode *)malloc(sizeof(TrieNode));
-    for (int i = 0; i < 256; i++)
-        node->children[i] = NULL;
-    node->file_entry = NULL;
-    return node;
-}
-
-// Insert a path into the Trie
-
-
-// Search for a path in the Trie
-
 
 // Register a Storage Server
 int register_storage_server(const char *ip, int port)
@@ -46,9 +30,6 @@ int register_storage_server(const char *ip, int port)
     printf("Registered Storage Server %d: %s:%d\n", id, ip, port);
     return id;
 }
-
-
-
 
 void handle_storage_server(int client_socket, char *buffer)
 {
@@ -75,7 +56,6 @@ void handle_storage_server(int client_socket, char *buffer)
         insert_path(token, ss_id,root);
     }
 }
-
 
 void *handle_connection(void *arg)
 {
@@ -118,10 +98,6 @@ void *handle_connection(void *arg)
     //close(client_socket);
     return NULL;
 }
-
-
-
-
 
 void handle_client(int client_socket, char *buffer)
 {
@@ -228,7 +204,7 @@ int main(int argc, char *argv[])
 
     // Load Trie and Cache from files
     load_trie("trie_data.bin",root);
-    load_cache("cache_data.bin");
+    load_cache("cache_data.bin",cache);
 
     // Set up signal handlers to save data on exit
     signal(SIGINT, signal_handler);

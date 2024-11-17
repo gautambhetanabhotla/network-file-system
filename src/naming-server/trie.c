@@ -105,3 +105,13 @@ void load_trie(const char *filename, TrieNode *root)
     load_node(root, file);
     fclose(file);
 }
+
+
+TrieNode *create_trie_node()
+{
+    TrieNode *node = (TrieNode *)malloc(sizeof(TrieNode));
+    for (int i = 0; i < 256; i++)
+        node->children[i] = NULL;
+    node->file_entry = NULL;
+    return node;
+}
