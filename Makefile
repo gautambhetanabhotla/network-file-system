@@ -36,8 +36,9 @@ ss: $(patsubst src/storage-server/%.c, build/storage-server/%.o, $(wildcard src/
 
 .PHONY: clean
 clean:
-	rm -rf build c ns ss
+	rm -rf build c ns ss a.out
 
 req:
 	gcc tests/send_req_to_ss.c
 	./a.out
+	rm -f a.out

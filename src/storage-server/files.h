@@ -23,5 +23,6 @@ struct file {
 
 struct file* add_file_entry(char* vpath, char* rpath, char* mtime, bool toFile);
 struct file* get_file(char* vpath);
+int remove_file_entry(char* vpath);
 
 #endif
