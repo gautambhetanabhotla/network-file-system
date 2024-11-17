@@ -58,6 +58,12 @@ void send_paths(int nm_sockfd) {
     if(pathsfile == NULL) pathsfile = fopen("./paths.txt", "w");
     fclose(pathsfile);
     pathsfile = fopen("./paths.txt", "r");
+    fseek(pathsfile, 0, SEEK_END);
+    long byte_count = ftell(pathsfile);
+    fseek(pathsfile, 0, SEEK_SET);
+    char CL[21]; CL[20] = '\0';
+    sprintf(CL, "%ld", byte_count);
+    send(nm_sockfd, CL, sizeof(CL) - 1, 0);
     while(!feof(pathsfile)) {
         int flag = 0;
         char vpath[MAXPATHLENGTH + 1], rpath[MAXPATHLENGTH + 1];
@@ -144,7 +150,7 @@ int main(int argc, char* argv[]) {
     send(nm_sockfd, port_str, strlen(port_str), 0);
     // Send the list of accessible paths
     send_paths(nm_sockfd);
-    send(nm_sockfd, "STOP,,,\n", strlen("STOP,,,\n"), 0);
+    // send(nm_sockfd, "STOP,,,\n", strlen("STOP,,,\n"), 0);
 
     while(1) {
         struct sockaddr_in client_addr;
