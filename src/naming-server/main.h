@@ -34,8 +34,7 @@ typedef char KEY_TYPE[MAX_LEN];
 typedef struct {
     char filename[MAX_FILENAME_LENGTH];
     int ss_ids[3];
-    time_t last_modified;
-
+    char last_modified[20];
     struct FileEntry *is_copy;
 } FileEntry;
 
