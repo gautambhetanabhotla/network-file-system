@@ -38,6 +38,7 @@ typedef struct {
     int client_port;   // Port for Client communication
     char paths[MAX_PATHS_PER_SS][MAX_PATH_LENGTH];
     int id;
+    int file_count;
     int path_count;
     int is_active;
     pthread_mutex_t ss_mutex;
@@ -57,9 +58,7 @@ typedef struct {
 // File Entry Structure
 typedef struct {
     char filename[MAX_FILENAME_LENGTH];
-    int storage_server_id;
-    int backup1_server_id;
-    int backup2_server_id;
+    int ss_ids[3];
     time_t last_modified;
 
     struct FileEntry *is_copy;
@@ -76,6 +75,15 @@ typedef struct CacheNode {
     struct CacheNode *prev;
     struct CacheNode *next;
 } CacheNode;
+
+
+// Global port
+extern TrieNode *root;
+extern StorageServerInfo storage_servers[MAX_STORAGE_SERVERS];
+extern int storage_server_count = 0;
+extern struct lru_cache *cache; // Cache pointer
+extern sem_t storage_server_sem;                 // Semaphore to track storage servers
+extern pthread_mutex_t storage_server_mutex;     // Mutex to protect storage_server_count
 
 // Function Declarations
 void *storage_server_handler(void *arg);

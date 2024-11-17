@@ -12,6 +12,39 @@ sem_t storage_server_sem;                 // Semaphore to track storage servers
 pthread_mutex_t storage_server_mutex;     // Mutex to protect storage_server_count
 
 // Signal Handler to save data on exit
+
+
+void choose_least_full_servers(int *chosen_servers)
+{
+    int min_file_counts[3] = {__INT_MAX__, __INT_MAX__, __INT_MAX__};
+    for (int i = 0; i < storage_server_count; i++)
+    {
+        int file_count = storage_servers[i].file_count;
+        if (file_count < min_file_counts[0])
+        {
+            min_file_counts[2] = min_file_counts[1];
+            chosen_servers[2] = chosen_servers[1];
+            min_file_counts[1] = min_file_counts[0];
+            chosen_servers[1] = chosen_servers[0];
+            min_file_counts[0] = file_count;
+            chosen_servers[0] = i;
+        }
+        else if (file_count < min_file_counts[1])
+        {
+            min_file_counts[2] = min_file_counts[1];
+            chosen_servers[2] = chosen_servers[1];
+            min_file_counts[1] = file_count;
+            chosen_servers[1] = i;
+        }
+        else if (file_count < min_file_counts[2])
+        {
+            min_file_counts[2] = file_count;
+            chosen_servers[2] = i;
+        }
+    }
+}
+
+
 void signal_handler(int sig)
 {
     printf("Received signal %d, saving data and exiting...\n", sig);
@@ -27,6 +60,7 @@ int register_storage_server(const char *ip, int port)
     storage_servers[id].id = id;
     strcpy(storage_servers[id].ip_address, ip);
     storage_servers[id].port = port;
+    storage_servers[id].file_count = 0;
     printf("Registered Storage Server %d: %s:%d\n", id, ip, port);
     return id;
 }
@@ -99,8 +133,6 @@ void *handle_connection(void *arg)
     return NULL;
 }
 
-
-
 //Handle Client Requests
 void handle_client(int client_socket, char *initial_buffer) {
     char buffer[1024];
@@ -133,12 +165,17 @@ void handle_client(int client_socket, char *initial_buffer) {
                 int ss_id = 0;
 
                 // Insert path into trie
-                insert_path(full_path, ss_id, root);
+                int chosen_servers[3];
+                choose_least_full_servers(chosen_servers);
+                insert_path(full_path, chosen_servers, root);
+
 
                 // Update cache
                 FileEntry *new_entry = malloc(sizeof(FileEntry));
                 strcpy(new_entry->filename, full_path);
-                new_entry->storage_server_id = ss_id;
+                for(int i = 0; i < 3; i++){
+                    new_entry->ss_ids[i] = chosen_servers[i];
+                }
                 cache_put(full_path, new_entry, cache);
 
                 // TODO: Send CREATE command to storage server
@@ -321,11 +358,7 @@ int main(int argc, char *argv[])
 
     // Load Trie and Cache from files
     load_trie("trie_data.bin",root);
-<<<<<<< HEAD
-    load_cache("cache_data.bin", cache);
-=======
     load_cache("cache_data.bin",cache);
->>>>>>> 8dfa9e8d8fc24b696c9bf22689d7f61d9156137f
 
     // Set up signal handlers to save data on exit
     signal(SIGINT, signal_handler);
