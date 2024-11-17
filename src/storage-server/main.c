@@ -145,9 +145,9 @@ int main(int argc, char* argv[]) {
     nm_sockfd = connect_to_naming_server(argc, argv);
     send(nm_sockfd, "STORAGESERVER\n", strlen("STORAGESERVER\n"), 0);
     // Send the port you're using to listen for clients
-    char port_str[15];
-    snprintf(port_str, 13, "%d\n", PORT);
-    send(nm_sockfd, port_str, strlen(port_str), 0);
+    char port_str[6];
+    snprintf(port_str, 5, "%d", PORT);
+    send(nm_sockfd, port_str, sizeof(port_str) - 1, 0);
     // Send the list of accessible paths
     send_paths(nm_sockfd);
     // send(nm_sockfd, "STOP,,,\n", strlen("STOP,,,\n"), 0);

@@ -100,6 +100,7 @@ void handle_storage_server(int client_socket, char *buffer)
 
 void *handle_connection(void *arg)
 {
+    printf("Handling connection...\n");
     int client_socket = *(int *)arg;
     free(arg);
 
