@@ -132,8 +132,9 @@ void *handle_connection(void *arg)
 
 
             // Receive the port number (5 bytes)
-            char port_str[6];
+            char port_str[5];
             bytes_received = recv(client_socket, port_str, 5, 0);
+
             if (bytes_received != 5)
             {
                 perror("Failed to read port number");
@@ -158,6 +159,7 @@ void *handle_connection(void *arg)
                 return NULL;
             }
             content_length_str[20] = '\0';
+            fprintf(stderr, "CONTENT LENGTH STR %s", content_length_str);
             int content_length = atoi(content_length_str);
             printf("Content length: %d\n", content_length);
 
