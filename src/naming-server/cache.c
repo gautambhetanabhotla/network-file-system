@@ -92,3 +92,64 @@ FileEntry* cache_put(KEY_TYPE key, FileEntry* value, struct lru_cache *cache)
 
     return new_node->value;
 }
+
+
+// Function to load Cache from a file
+void load_cache(const char *filename, struct lru_cache *cache)
+{
+    FILE *file = fopen(filename, "rb");
+    if (!file)
+    {
+        printf("Cache data file not found, starting with empty cache.\n");
+        return;
+    }
+    // Read the cache size
+    fread(&cache->size, sizeof(int), 1, file);
+    cache->most_recently_used = NULL;
+    cache->least_recently_used = NULL;
+    int count = cache->size;
+    cache->size = 0; // Will update size as we add entries
+    for (int i = 0; i < count; i++)
+    {
+        // Read the key
+        uint32_t key_len;
+        fread(&key_len, sizeof(uint32_t), 1, file);
+        char key[MAX_PATH_LENGTH];
+        fread(key, sizeof(char), key_len, file);
+        key[key_len] = '\0';
+        // Read the FileEntry
+        FileEntry *value = (FileEntry *)malloc(sizeof(FileEntry));
+        fread(value, sizeof(FileEntry), 1, file);
+        // Put into cache
+        cache_put(key, value, cache);
+    }
+    fclose(file);
+}
+
+
+// Function to save Cache to a file
+void save_cache(const char *filename, struct lru_cache *cache)
+{
+    FILE *file = fopen(filename, "wb");
+    if (!file)
+    {
+        perror("Failed to open cache data file for writing");
+        return;
+    }
+    // Write the cache size
+    fwrite(&cache->size, sizeof(int), 1, file);
+    // Iterate through the cache and save entries
+    struct lru_cache_node *current = cache->most_recently_used;
+    while (current)
+    {
+        // Write the key length and key
+        uint32_t key_len = strlen(current->key);
+        fwrite(&key_len, sizeof(uint32_t), 1, file);
+        fwrite(current->key, sizeof(char), key_len, file);
+        // Write the FileEntry
+        fwrite(current->value, sizeof(FileEntry), 1, file);
+        current = current->next;
+    }
+    fclose(file);
+}
+
