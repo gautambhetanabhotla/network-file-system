@@ -7,11 +7,34 @@ int storage_server_count = 0;
 struct lru_cache *cache; // Cache pointer
 sem_t storage_server_sem;                 // Semaphore to track storage servers
 pthread_mutex_t storage_server_mutex;     // Mutex to protect storage_server_count
+int round_robin_counter = 0;
 
 // Signal Handler to save data on exit
 
+ssize_t read_n_bytes(int socket_fd, void *buffer, size_t n)
+{
+    size_t total_read = 0;
+    char *buf = (char *)buffer;
+    while (total_read < n)
+    {
+        ssize_t bytes_read = recv(socket_fd, buf + total_read, n - total_read, 0);
+        if (bytes_read < 0)
+        {
+            perror("recv");
+            return -1; // Error occurred
+        }
+        else if (bytes_read == 0)
+        {
+            // Connection closed
+            fprintf(stderr, "Connection closed by peer\n");
+            return -1;
+        }
+        total_read += bytes_read;
+    }
+    return total_read;
+}
 
-void choose_least_full_servers(int *chosen_servers)
+void choose_least_full_servers(int *chosen_servers, int *num_chosen)
 {
     int min_file_counts[3] = {__INT_MAX__, __INT_MAX__, __INT_MAX__};
     for (int i = 0; i < storage_server_count; i++)
@@ -25,6 +48,7 @@ void choose_least_full_servers(int *chosen_servers)
             chosen_servers[1] = chosen_servers[0];
             min_file_counts[0] = file_count;
             chosen_servers[0] = i;
+            *num_chosen = (*num_chosen < 3) ? *num_chosen + 1 : 3;
         }
         else if (file_count < min_file_counts[1])
         {
@@ -32,11 +56,13 @@ void choose_least_full_servers(int *chosen_servers)
             chosen_servers[2] = chosen_servers[1];
             min_file_counts[1] = file_count;
             chosen_servers[1] = i;
+            *num_chosen = (*num_chosen < 3) ? *num_chosen + 1 : 3;
         }
         else if (file_count < min_file_counts[2])
         {
             min_file_counts[2] = file_count;
             chosen_servers[2] = i;
+            *num_chosen = (*num_chosen < 3) ? *num_chosen + 1 : 3;
         }
     }
 }
@@ -84,32 +110,148 @@ void handle_storage_server(int client_socket, char *buffer)
     {
         if (strcmp(token, "STOP") == 0)
             break;
-        
+        printf("Received path: %s\n", token);
+
         int chosen_servers[3];
-        choose_least_full_servers(chosen_servers);
-        insert_path(token, chosen_servers,root);
+        int num_chosen;
+        choose_least_full_servers(chosen_servers, &num_chosen);
+        insert_path(token, chosen_servers, num_chosen, root);
     }
 }
+
 
 void *handle_connection(void *arg)
 {
     int client_socket = *(int *)arg;
     free(arg);
 
-    char buffer[1024] = {0};
-    int bytes_received = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
-    if (bytes_received <= 0)
+    char buffer[1024];
+    char accumulated_buffer[16384]; // Larger buffer to accumulate data
+    int accumulated_length = 0;
+    ssize_t bytes_received;
+
+    // Receive 13 bytes to check for the "STORAGESERVER" flag
+    bytes_received = read_n_bytes(client_socket, buffer, 13);
+    if (bytes_received != 13)
     {
+        fprintf(stderr, "Failed to read STORAGESERVER flag\n");
         close(client_socket);
         return NULL;
     }
-    buffer[bytes_received] = '\0';
+    buffer[13] = '\0';
+    printf("Received: %s\n", buffer);
 
     // Check if the message is from a storage server
-    printf("Received: %s\n", buffer);
     if (strncmp(buffer, "STORAGESERVER", 13) == 0)
     {
-        handle_storage_server(client_socket, buffer);
+        // Add "STORAGESERVER" to the accumulated buffer
+        memcpy(accumulated_buffer + accumulated_length, buffer, 13);
+        accumulated_length += 13;
+
+        // Receive the port number (5 bytes)
+        char port_str[6];
+        bytes_received = read_n_bytes(client_socket, port_str, 5);
+        if (bytes_received != 5)
+        {
+            fprintf(stderr, "Failed to read port number\n");
+            close(client_socket);
+            return NULL;
+        }
+        port_str[5] = '\0';
+        printf("Port: %s\n", port_str);
+        // Add the port number to the accumulated buffer
+        memcpy(accumulated_buffer + accumulated_length, port_str, 5);
+        accumulated_length += 5;
+
+        // Receive the content length (20 bytes)
+        char content_length_str[21];
+        bytes_received = read_n_bytes(client_socket, content_length_str, 20);
+        if (bytes_received != 20)
+        {
+            fprintf(stderr, "Failed to read content length\n");
+            close(client_socket);
+            return NULL;
+        }
+        content_length_str[20] = '\0';
+        int content_length = atoi(content_length_str);
+        printf("Content length: %d\n", content_length);
+
+        // Add the content length to the accumulated buffer
+        memcpy(accumulated_buffer + accumulated_length, content_length_str, 20);
+        accumulated_length += 20;
+
+        // Receive the specified amount of data based on the content length
+        int total_bytes_read = 0;
+        int token_counter = 0;
+        while (total_bytes_read < content_length)
+        {
+            ssize_t chunk_size = (content_length - total_bytes_read) > (sizeof(buffer) - 1) ? (sizeof(buffer) - 1) : (content_length - total_bytes_read);
+            bytes_received = recv(client_socket, buffer, chunk_size, 0);
+            if (bytes_received < 0)
+            {
+                perror("recv");
+                close(client_socket);
+                return NULL;
+            }
+            else if (bytes_received == 0)
+            {
+                fprintf(stderr, "Connection closed by peer during data reception\n");
+                close(client_socket);
+                return NULL;
+            }
+
+            buffer[bytes_received] = '\0';
+            fprintf(stderr, "Received: %s\n", buffer);
+            // Split the buffer into tokens based on spaces and newlines
+            char *token = strtok(buffer, " \n");
+            while (token != NULL)
+            {
+                // Skip blank tokens
+                if (strlen(token) == 0)
+                {
+                    token = strtok(NULL, " \n");
+                    continue;
+                }
+                // Skip every second token
+                if (token_counter % 2 == 0)
+                {
+                    // Accumulate data in the buffer
+                    if (accumulated_length + strlen(token) < sizeof(accumulated_buffer) - 1)
+                    {
+                        memcpy(accumulated_buffer + accumulated_length, token, strlen(token));
+                        accumulated_length += strlen(token);
+                        accumulated_buffer[accumulated_length] = ' '; // Add space character
+                        accumulated_length++;
+                    }
+                    else
+                    {
+                        fprintf(stderr, "Accumulated buffer overflow\n");
+                        close(client_socket);
+                        return NULL;
+                    }
+                }
+                token_counter++;
+                token = strtok(NULL, " \n");
+            }
+
+            total_bytes_read += bytes_received;
+        }
+
+        // Add null terminator at the end of the accumulated buffer
+        if (accumulated_length < sizeof(accumulated_buffer))
+        {
+            accumulated_buffer[accumulated_length] = '\0';
+        }
+        else
+        {
+            accumulated_buffer[sizeof(accumulated_buffer) - 1] = '\0';
+        }
+
+        // Debug print of the accumulated buffer
+        fprintf(stderr, "Accumulated buffer: %s\n", accumulated_buffer);
+
+        // Call handle_storage_server with the accumulated data
+        handle_storage_server(client_socket, accumulated_buffer);
 
         // If this is the first storage server, post the semaphore
         pthread_mutex_lock(&storage_server_mutex);
@@ -122,19 +264,17 @@ void *handle_connection(void *arg)
     }
     else
     {
-        // Wait until at least one storage server is connected
-        sem_wait(&storage_server_sem);
-        sem_post(&storage_server_sem); // Keep semaphore value unchanged
-
+        // Handle client connections...
         handle_client(client_socket, buffer);
     }
 
-    //close(client_socket);
+    close(client_socket);
     return NULL;
 }
 
 //Handle Client Requests
-void handle_client(int client_socket, char *initial_buffer) {
+void handle_client(int client_socket, char *initial_buffer)
+{
     char buffer[1024];
     strcpy(buffer, initial_buffer);  // Copy the initial buffer
 
@@ -142,141 +282,78 @@ void handle_client(int client_socket, char *initial_buffer) {
     char *saveptr;
     char *command = strtok_r(buffer, "\n", &saveptr);
 
-    if (command == NULL) {
+    if (command == NULL)
+    {
         const char *msg = "Error: No command received\n";
         send(client_socket, msg, strlen(msg), 0);
         return;
     }
 
-    if (strcmp(command, "CREATE") == 0) {
+    if (strcmp(command, "CREATE") == 0)
+    {
         char *folderpath = strtok_r(NULL, "\n", &saveptr);
         char *f_path = strtok_r(NULL, "\n", &saveptr);
 
-        if (folderpath && f_path) {
+        if (folderpath && f_path)
+        {
             char full_path[MAX_PATH_LENGTH];
             snprintf(full_path, sizeof(full_path), "%s/%s", folderpath, f_path);
 
             int ss_id = search_path(full_path, root);
-            if (ss_id != -1) {
+            if (ss_id != -1)
+            {
                 const char *msg = "Error: File or folder already exists\n";
                 send(client_socket, msg, strlen(msg), 0);
-            } else {
-                // For simplicity, select the first storage server
-                int ss_id = 0;
+            }
+            else
+            {
+                // Choose the three least full storage servers
+                int chosen_servers[3];
+                int num_chosen;
+                choose_least_full_servers(chosen_servers, &num_chosen);
 
                 // Insert path into trie
-                int chosen_servers[3];
-                choose_least_full_servers(chosen_servers);
-                insert_path(full_path, chosen_servers, root);
-
+                insert_path(full_path, chosen_servers, num_chosen, root);
 
                 // Update cache
                 FileEntry *new_entry = malloc(sizeof(FileEntry));
                 strcpy(new_entry->filename, full_path);
-                for(int i = 0; i < 3; i++){
+                for (int i = 0; i < num_chosen; i++)
+                {
                     new_entry->ss_ids[i] = chosen_servers[i];
                 }
-
-                time_t now = time(NULL);
-                struct tm *tm_info = gmtime(&now);  // Use localtime(&now) for local time
-
-                strftime(new_entry->last_modified, sizeof(new_entry->last_modified), "%Y-%m-%dT%H:%M:%SZ", tm_info);
-
                 cache_put(full_path, new_entry, cache);
 
-                // TODO: Send CREATE command to storage server
+                // TODO: Send CREATE command to storage servers
 
                 const char *msg = "Success: File or folder created\n";
                 send(client_socket, msg, strlen(msg), 0);
             }
-        } else {
+        }
+        else
+        {
             const char *msg = "Error: Invalid parameters for CREATE\n";
             send(client_socket, msg, strlen(msg), 0);
         }
-    } else if (strcmp(command, "DELETE") == 0) {
-        char *folderpath = strtok_r(NULL, "\n", &saveptr);
-        char *f_path = strtok_r(NULL, "\n", &saveptr);
-
-        if (folderpath && f_path) {
-            char full_path[MAX_PATH_LENGTH];
-            snprintf(full_path, sizeof(full_path), "%s/%s", folderpath, f_path);
-
-            int ss_id = search_path(full_path, root);
-            if (ss_id == -1) {
-                const char *msg = "Error: File or folder not found\n";
-                send(client_socket, msg, strlen(msg), 0);
-            } else {
-                // Remove path from trie and cache
-                remove_path(full_path,root);
-                cache_remove(full_path, cache);
-
-                // TODO: Send DELETE command to storage server
-
-                const char *msg = "Success: File or folder deleted\n";
-                send(client_socket, msg, strlen(msg), 0);
-            }
-        } else {
-            const char *msg = "Error: Invalid parameters for DELETE\n";
-            send(client_socket, msg, strlen(msg), 0);
-        }
-    } else if (strcmp(command, "COPY") == 0) {
-        char *sourcefilepath = strtok_r(NULL, "\n", &saveptr);
-        char *destfolderpath = strtok_r(NULL, "\n", &saveptr);
-
-        if (sourcefilepath && destfolderpath) {
-            // TODO: Implement COPY logic
-
-            const char *msg = "Success: File copied\n";
-            send(client_socket, msg, strlen(msg), 0);
-        } else {
-            const char *msg = "Error: Invalid parameters for COPY\n";
-            send(client_socket, msg, strlen(msg), 0);
-        }
-    } else if (strcmp(command, "INFO") == 0) {
+    }
+    else if (strcmp(command, "READ") == 0 || strcmp(command, "STREAM") == 0 || strcmp(command, "WRITE") == 0)
+    {
         char *filepath = strtok_r(NULL, "\n", &saveptr);
-
-        if (filepath) {
-            int ss_id = search_path(filepath, root);
-            if (ss_id != -1) {
-                // TODO: Retrieve actual file info from storage server
-
-                const char *file_info = "File size: 1024 bytes\nLast modified: 2023-11-01\n";
-                send(client_socket, file_info, strlen(file_info), 0);
-
-                const char *msg = "Success: File info retrieved\n";
-                send(client_socket, msg, strlen(msg), 0);
-            } else {
-                const char *msg = "Error: File not found\n";
-                send(client_socket, msg, strlen(msg), 0);
-            }
-        } else {
-            const char *msg = "Error: Invalid parameters for INFO\n";
-            send(client_socket, msg, strlen(msg), 0);
-        }
-    } else if (strcmp(command, "LIST") == 0) {
-        char *folderpath = strtok_r(NULL, "\n", &saveptr);
-
-        if (folderpath) {
-            // TODO: Retrieve actual list from storage server
-
-            const char *list = "file1.txt\nfile2.txt\nfolder1\n";
-            send(client_socket, list, strlen(list), 0);
-
-            const char *msg = "Success: List retrieved\n";
-            send(client_socket, msg, strlen(msg), 0);
-        } else {
-            const char *msg = "Error: Invalid parameters for LIST\n";
-            send(client_socket, msg, strlen(msg), 0);
-        }
-    } else if (strcmp(command, "READ") == 0 || strcmp(command, "STREAM") == 0 || strcmp(command, "WRITE") == 0) {
-        char *filepath = strtok_r(NULL, "\n", &saveptr);
-        if (filepath) {
+        if (filepath)
+        {
             // Check in cache
             FileEntry *entry = cache_get(filepath, cache);
-            if (entry != NULL) {
-                int ss_id = entry->ss_ids[0];
+            if (entry != NULL)
+            {
+                // Use round-robin scheduling to select the storage server ID
+                pthread_mutex_lock(&storage_server_mutex);
+                int ss_id = entry->ss_ids[round_robin_counter % 3];
+                round_robin_counter++;
+                pthread_mutex_unlock(&storage_server_mutex);
+
                 char response[256];
                 snprintf(response, sizeof(response), "%s\n%d\n",
+
                             storage_servers[ss_id].ip_address,
                             storage_servers[ss_id].port);
                 if(strcmp(command, "WRITE")==0){
@@ -286,37 +363,53 @@ void handle_client(int client_socket, char *initial_buffer) {
                     strftime(entry->last_modified, sizeof(entry->last_modified), "%Y-%m-%dT%H:%M:%SZ", tm_info);
                 }
                 send(client_socket, response, strlen(response), 0);
-            } else {
+            }
+            else
+            {
                 int ss_id = search_path(filepath, root);
-                if (ss_id != -1) {
+                if (ss_id != -1)
+                {
                     // Update cache
                     FileEntry *new_entry = malloc(sizeof(FileEntry));
                     strcpy(new_entry->filename, filepath);
                     new_entry->ss_ids[0] = ss_id;
                     cache_put(filepath, new_entry, cache);
 
+                    // Use round-robin scheduling to select the storage server ID
+                    pthread_mutex_lock(&storage_server_mutex);
+                    int selected_ss_id = new_entry->ss_ids[round_robin_counter % 3];
+                    round_robin_counter++;
+                    pthread_mutex_unlock(&storage_server_mutex);
+
                     // Send storage server info
                     char response[256];
                     snprintf(response, sizeof(response), "%s\n%d\n",
-                             storage_servers[ss_id].ip_address,
-                             storage_servers[ss_id].port);
-                    if(strcmp(command, "WRITE")==0){
+                             storage_servers[selected_ss_id].ip_address,
+                             storage_servers[selected_ss_id].port);
+                    if (strcmp(command, "WRITE") == 0)
+                    {
                         time_t now = time(NULL);
                         struct tm *tm_info = gmtime(&now);  // Use localtime(&now) for local time
 
-                        strftime(entry->last_modified, sizeof(entry->last_modified), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+                        strftime(new_entry->last_modified, sizeof(new_entry->last_modified), "%Y-%m-%dT%H:%M:%SZ", tm_info);
                     }
                     send(client_socket, response, strlen(response), 0);
-                } else {
+                }
+                else
+                {
                     const char *msg = "Error: File not found\n";
                     send(client_socket, msg, strlen(msg), 0);
                 }
             }
-        } else {
+        }
+        else
+        {
             const char *msg = "Error: Invalid parameters\n";
             send(client_socket, msg, strlen(msg), 0);
         }
-    } else {
+    }
+    else
+    {
         const char *msg = "Error: Invalid command\n";
         send(client_socket, msg, strlen(msg), 0);
     }
@@ -438,3 +531,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+

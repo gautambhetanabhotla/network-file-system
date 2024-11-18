@@ -12,6 +12,7 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include <time.h>
+#include <fcntl.h>
 
 
 #define MAX_LEN 1024
@@ -34,8 +35,7 @@ typedef char KEY_TYPE[MAX_LEN];
 typedef struct {
     char filename[MAX_FILENAME_LENGTH];
     int ss_ids[3];
-    time_t last_modified;
-
+    char last_modified[20];
     struct FileEntry *is_copy;
 } FileEntry;
 
@@ -109,6 +109,7 @@ extern int storage_server_count;
 extern struct lru_cache *cache; // Cache pointer
 extern sem_t storage_server_sem;                 // Semaphore to track storage servers
 extern pthread_mutex_t storage_server_mutex;     // Mutex to protect storage_server_count
+extern int round_robin_counter;
 
 // Function Declarations
 void *storage_server_handler(void *arg);
@@ -123,7 +124,7 @@ int register_storage_server(const char *ip, int port);
 void handle_client(int client_socket, char *buffer);
 void signal_handler(int sig);
 TrieNode *create_trie_node();
-void insert_path(const char *path, int* storage_server_ids, TrieNode *root);
+void insert_path(const char *path, int *storage_server_ids, int num_chosen, TrieNode *root);
 int search_path(const char *path, TrieNode *root);
 void save_trie(const char *filename, TrieNode *root);
 void load_trie(const char *filename, TrieNode *root);

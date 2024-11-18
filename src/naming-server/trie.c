@@ -14,7 +14,7 @@ TrieNode *create_trie_node()
     return node;
 }
 
-void insert_path(const char *path, int* storage_server_ids, TrieNode *root)
+void insert_path(const char *path, int *storage_server_ids, int num_chosen, TrieNode *root)
 {
     TrieNode *current = root;
     for (int i = 0; path[i]; i++)
@@ -28,12 +28,11 @@ void insert_path(const char *path, int* storage_server_ids, TrieNode *root)
     {
         current->file_entry = (FileEntry *)malloc(sizeof(FileEntry));
         strcpy(current->file_entry->filename, path);
-        for(int i = 0; i < 3; i++){
+        for (int i = 0; i < num_chosen; i++)
+        {
             current->file_entry->ss_ids[i] = storage_server_ids[i];
             storage_servers[storage_server_ids[i]].file_count++;
-
         }
-        current->file_entry->is_copy = NULL;
     }
 }
 

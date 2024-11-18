@@ -2,15 +2,16 @@
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <stdlib.h>
 
-int main() {
+int main(int argc, char* argv[]) {
     char req[11] = {0}, vpath[4096] = {0}, mtime[21] = {0};
     scanf("%s%s%s", req, vpath, mtime);
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    addr.sin_port = htons(3000);
+    addr.sin_addr.s_addr = inet_addr(argv[1]);
+    addr.sin_port = htons(atoi(argv[2]));
     connect(fd, (struct sockaddr*)&addr, sizeof(addr));
     send(fd, req, 10, 0);
     send(fd, vpath, 4096, 0);
