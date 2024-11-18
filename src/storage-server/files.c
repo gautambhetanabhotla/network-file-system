@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <semaphore.h>
+#include <unistd.h>
 
 struct file** file_entries = NULL;
 unsigned long long int n_file_entries = 0;
@@ -92,51 +93,50 @@ int remove_file_entry(char* vpath) {
             return 1;
         }
 
-        // long pos = 0;
-        char line[MAXPATHLENGTH * 3]; // Adjust buffer size as needed
+        char line[(MAXPATHLENGTH + 1) * 3]; // Adjust buffer size as needed
+        long line_pos = -1;
+        long last_line_pos = -1;
+        char last_line[(MAXPATHLENGTH + 1) * 3];
         bool found = false;
+
         while (fgets(line, sizeof(line), file)) {
-            // Keep track of the position of the line
-            long line_pos = ftell(file) - strlen(line);
-            // Parse the line to get vpath
+            long current_pos = ftell(file) - strlen(line);
+            if (strcmp(line, "\n") != 0) {
+                last_line_pos = current_pos;
+                strcpy(last_line, line);
+            }
             char file_vpath[MAXPATHLENGTH + 1];
             char file_rpath[MAXPATHLENGTH + 1];
             char file_mtime[MAXPATHLENGTH + 1];
             if (sscanf(line, "%s %s %s", file_vpath, file_rpath, file_mtime) == 3) {
                 if (strcmp(file_vpath, vpath) == 0) {
-                    // Found the line to delete
                     found = true;
-                    // Move the file pointer to the beginning of the line
-                    fseek(file, line_pos, SEEK_SET);
-                    // Overwrite the line with spaces or blank line
-                    int line_length = strlen(line);
-                    for (int i = 0; i < line_length - 1; i++) { // -1 to leave the newline character
-                        fputc(' ', file);
-                    }
-                    fputc('\n', file); // Ensure the newline character remains
-                    break;
+                    line_pos = current_pos;
                 }
             }
-            // pos = ftell(file);
         }
-        fclose(file);
+
         if (!found) {
             fprintf(stderr, "Error: Entry not found in paths.txt\n");
+            fclose(file);
             return 1;
         }
 
-        // Remove from file_entries array
-        for (unsigned long long int i = 0; i < n_file_entries; i++) {
-            if (strcmp(file_entries[i]->vpath, vpath) == 0) {
-                // Shift the remaining entries
-                sem_wait(&n_file_sem);
-                file_entries[i] =file_entries[n_file_entries - 1];
-                file_entries = realloc(file_entries, sizeof(struct file*) * (n_file_entries - 1));
-                n_file_entries--;
-                sem_post(&n_file_sem);
-                break;
-            }
+        if (line_pos == last_line_pos) {
+            // If the line to delete is the last line, just truncate the file
+            fseek(file, line_pos, SEEK_SET);
+            ftruncate(fileno(file), line_pos);
         }
+        else {
+            // Replace the line to delete with the last line
+            fseek(file, line_pos, SEEK_SET);
+            fputs(last_line, file);
+            // Truncate the file to remove the last line
+            ftruncate(fileno(file), last_line_pos);
+        }
+
+        fclose(file);
+
         // Clean up the file structure
         sem_destroy(&(current->file->lock));
         sem_destroy(&(current->file->writelock));

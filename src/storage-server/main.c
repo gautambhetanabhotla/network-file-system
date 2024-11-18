@@ -140,19 +140,22 @@ int main(int argc, char* argv[]) {
     // Initialise stuff with naming server
     nm_sockfd = connect_to_naming_server(argc, argv);
     // send(nm_sockfd, "STORAGESERVER", strlen("STORAGESERVER"), 0);
+    long byte_count = 0;
     FILE* pathsfile = fopen("./paths.txt", "r");
-    fseek(pathsfile, 0, SEEK_END);
-    long byte_count = ftell(pathsfile);
-    fseek(pathsfile, 0, SEEK_SET);
+    if(pathsfile) {
+        fseek(pathsfile, 0, SEEK_END);
+        byte_count = ftell(pathsfile);
+        fseek(pathsfile, 0, SEEK_SET);
+        fclose(pathsfile);
+    }
     fprintf(stderr, "SENDING CONTENT LENGTH %ld\n", byte_count);
-    request(-1, HELLO, (long)5 + byte_count);
+    request(nm_sockfd, -1, HELLO, (long)5 + byte_count);
     // Send the port you're using to listen for clients
     char port_str[6] = {'\0'};
     sprintf(port_str, "%d", PORT);
     send(nm_sockfd, port_str, sizeof(port_str) - 1, 0);
     // Send the list of accessible paths
     send_paths(nm_sockfd); 
-    // send(nm_sockfd, "STOP,,,\n", strlen("STOP,,,\n"), 0);
 
     while(1) {
         struct sockaddr_in client_addr;

@@ -20,33 +20,41 @@ void ns_synchronize(int fd, char* vpath, int requestID) {
     
 }
 
-void respond(int fd, enum exit_status status, int requestID) {
+void respond(int nmfd, int clfd, enum exit_status status, int requestID, long contentLength) {
     char header[11] = {'\0'}; header[0] = '0' + status;
     sprintf(header + 1, "%d", requestID);
     char CL[21]; CL[20] = '\0';
-    sprintf(CL, "%ld", (long)0);
-    send(fd, header, sizeof(header) - 1, 0);
-    send(fd, CL, sizeof(CL) - 1, 0);
-    send(nm_sockfd, header, sizeof(header) - 1, 0);
-    send(nm_sockfd, CL, sizeof(CL) - 1, 0);
+    sprintf(CL, "%ld", contentLength);
+    if(clfd != -1){
+        send(clfd, header, sizeof(header) - 1, 0);
+        send(clfd, CL, sizeof(CL) - 1, 0);
+    }
+    if(nmfd != -1) {
+        send(nmfd, header, sizeof(header) - 1, 0);
+        send(nmfd, CL, sizeof(CL) - 1, 0);
+    }
 }
 
-void request(int fd, enum request_type type, long contentLength) {
+void request(int nmfd, int clfd, enum request_type type, long contentLength) {
     char header[11] = {'\0'}; header[0] = '0' + type;
     snprintf(header + 1, 9, "%d", 0);
     char CL[21]; CL[20] = '\0';
     sprintf(CL, "%ld", contentLength);
-    if(fd != -1) send(fd, header, sizeof(header) - 1, 0);
-    if(fd != -1) send(fd, CL, sizeof(CL) - 1, 0);
-    send(nm_sockfd, header, sizeof(header) - 1, 0);
-    send(nm_sockfd, CL, sizeof(CL) - 1, 0);
+    if(clfd != -1) {
+        send(clfd, header, sizeof(header) - 1, 0);
+        send(clfd, CL, sizeof(CL) - 1, 0);
+    }
+    if(nmfd != -1) {
+        send(nmfd, header, sizeof(header) - 1, 0);
+        send(nmfd, CL, sizeof(CL) - 1, 0);
+    }
 }
 
 int recv_full(int fd, char* buf, int contentLength) {
     char buf2[4097]; int n = 0;
     int k;
     while(n < contentLength) {
-        k = recv(fd, buf2, 4096, 0);
+        k = recv(fd, buf2, contentLength - n, 0);
         if(k <= 0) break;
         memcpy(buf + n, buf2, k);
         n += k;
@@ -61,11 +69,8 @@ void* handle_client(void* arg) {
     int client_sockfd = *(int*)arg;
     char reqdata[11], vpath[MAXPATHLENGTH + 2], CL[21];
     vpath[4097] = '\0';
-    // recv(client_sockfd, reqdata, sizeof(reqdata) - 1, 0);
     recv_full(client_sockfd, reqdata, sizeof(reqdata) - 1);
-    // recv(client_sockfd, CL, sizeof(CL) - 1, 0);
     recv_full(client_sockfd, CL, sizeof(CL) - 1);
-    // recv(client_sockfd, vpath, sizeof(vpath), 0);
     int contentLength = atoi(CL);
     int CLD = contentLength < 4097 ? contentLength : 4097;
     recv_full(client_sockfd, vpath, CLD);
@@ -73,7 +78,7 @@ void* handle_client(void* arg) {
     while(*fp != '\n') fp++;
     *fp = '\0';
     fp++;
-    int remainingContentLength = fp - vpath + CLD; // COULD CAUSE ERRORS, CHECK
+    int remainingContentLength = contentLength - (fp - vpath); // COULD CAUSE ERRORS, CHECK
     int requestID = atoi(reqdata + 1);
     switch(reqdata[0] - '0') {
         case READ:
@@ -111,20 +116,17 @@ void* handle_client(void* arg) {
 void ss_read(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     struct file* f = get_file(vpath);
     if(!f) {
-        respond(fd, E_WRONG_SS, requestID);
+        respond(nm_sockfd, fd, E_WRONG_SS, requestID, 0);
         return;
     }
     FILE* F = fopen(f->rpath, "r");
     if(!F) {
-        respond(fd, E_FAULTY_SS, requestID);
+        respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0);
         return;
     }
     fseek(F, 0, SEEK_END);
     long file_size = ftell(F);
     rewind(F);
-    char header[20] = {'\0'}; header[0] = '0';
-    sprintf(header + 10, "%ld", file_size);
-    send(fd, header, 20, 0);
     char buf[8193]; int n = 0;
     sem_wait(&f->serviceQueue);
     sem_wait(&f->lock);
@@ -132,6 +134,7 @@ void ss_read(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     if(f->readers == 1) sem_wait(&f->writelock);
     sem_post(&f->lock);
     sem_post(&f->serviceQueue);
+    respond(-1, fd, file_size, requestID, file_size);
     while(!feof(F)) {
         n = fread(buf, 1, 8192, F);
         if(n > 0) send(fd, buf, n, 0);
@@ -143,10 +146,13 @@ void ss_read(int fd, char* vpath, int requestID, char* tbf, int rcl) {
 }
 
 void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, int rcl) {
+    contentLength -= (rcl + strlen(vpath) + 1);
     struct file* f = get_file(vpath);
-    if(!f) f = ss_create(fd, vpath, UNIX_START_TIME, requestID, tbf, rcl);
     if(!f) {
-        respond(fd, E_FAULTY_SS, requestID);
+        f = ss_create(fd, vpath, UNIX_START_TIME, requestID, tbf, rcl);
+    }
+    if(!f) {
+        respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0);
         return;
     }
     FILE* F = fopen(f->rpath, "w");
@@ -154,21 +160,24 @@ void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, 
     sem_wait(&f->serviceQueue);
     sem_wait(&f->writelock);
     sem_post(&f->serviceQueue);
+    respond(-1, fd, ACK, requestID, 0);
+    fwrite(tbf, 1, rcl, F);
     while(n < contentLength) {
         int k = recv(fd, buf, 8192, 0);
         if(k == 0) break;
         fwrite(buf, 1, k, F);
         n += k;
     }
+    fclose(F);
     sem_post(&f->writelock);
-    if(n < contentLength) respond(fd, E_INCOMPLETE_WRITE, requestID);
-    else respond(fd, SUCCESS, requestID);
+    if(n < contentLength) respond(nm_sockfd, fd, E_INCOMPLETE_WRITE, requestID, 0);
+    else respond(nm_sockfd, fd, SUCCESS, requestID, 0);
 }
 
 struct file* ss_create(int fd, char* vpath, char* mtime, int requestID, char* tbf, int rcl) {
     struct file* g = NULL;
     if((g = get_file(vpath))) {
-        respond(fd, E_FILE_ALREADY_EXISTS, requestID);
+        respond(nm_sockfd, fd, E_FILE_ALREADY_EXISTS, requestID, 0);
         return g;
     }
     char rpath[MAXPATHLENGTH + 1];
@@ -184,14 +193,14 @@ struct file* ss_create(int fd, char* vpath, char* mtime, int requestID, char* tb
     FILE* ff = fopen(rpath, "w");
     fclose(ff);
     struct file* f = add_file_entry(vpath, rpath, mtime, true);
-    if(f == NULL) respond(fd, E_FAULTY_SS, requestID);
-    else respond(fd, SUCCESS, requestID);
+    if(f == NULL) respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0);
+    else respond(nm_sockfd, fd, SUCCESS, requestID, 0);
     return f;
 }
 
 void ss_delete(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     struct file* f = get_file(vpath);
-    if(!f) respond(fd, E_FILE_DOESNT_EXIST, requestID);
+    if(!f) respond(nm_sockfd, fd, E_FILE_DOESNT_EXIST, requestID, 0);
     else if(remove(f->rpath)) {
         send(fd, "Error deleting file\n", strlen("Error deleting file\n"), 0);
     }
@@ -266,13 +275,4 @@ void ss_info(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     send(fd, buffer, strlen(buffer), 0);
 
     fclose(F);
-}
-
-void ss_update_mtime(int fd, char* vpath, char* mtime, int requestID, char* tbf, int rcl) {
-    struct file* f = get_file(vpath);
-    if(f == NULL) {
-        send(fd, "File not found\n", strlen("File not found\n"), 0);
-        return;
-    }
-    strcpy(f->mtime, mtime);
 }
