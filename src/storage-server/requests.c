@@ -14,58 +14,32 @@
 extern struct file** file_entries;
 extern unsigned long long int n_file_entries;
 
-enum request_type {
-    READ = 1, WRITE, STREAM, INFO, LIST, CREATE, COPY, DELETE
-};
-
-enum exit_status {
-    E_SUCCESS, E_FILE_DOESNT_EXIST, E_INCOMPLETE_WRITE, E_FILE_ALREADY_EXISTS, E_WRONG_SS, E_FAULTY_SS
-};
-
-/*
-
-Important: Request exchange format
-
-On startup - 
-
-STORAGESERVER
-<port>
-<path1>
-<path2>
-<path3>
-.....
-STOP,,,
-
-READ
-<virtual path>
-
-WRITE
-<virtual path>
-<content length>
-<content>
-
-COPY
-<source vpath>
-<dest vpath>
-
-STREAM
-<virtual path>
-
-CREATE
-<virtual path>
-
-Normalised:
-10 - Request type
-4096 - Virtual path
-20 - content length
-Header size = 10 + 4096 + 20 = 4126
-
-*/
-
 extern int nm_sockfd;
 
 void ns_synchronize(int fd, char* vpath, int requestID) {
     
+}
+
+void respond(int fd, enum exit_status status, int requestID) {
+    char header[11] = {'\0'}; header[0] = '0' + status;
+    sprintf(header + 1, "%d", requestID);
+    char CL[21]; CL[20] = '\0';
+    sprintf(CL, "%ld", (long)0);
+    send(fd, header, sizeof(header) - 1, 0);
+    send(fd, CL, sizeof(CL) - 1, 0);
+    send(nm_sockfd, header, sizeof(header) - 1, 0);
+    send(nm_sockfd, CL, sizeof(CL) - 1, 0);
+}
+
+void request(int fd, enum request_type type, long contentLength) {
+    char header[11] = {'\0'}; header[0] = '0' + type;
+    snprintf(header + 1, 9, "%d", 0);
+    char CL[21]; CL[20] = '\0';
+    sprintf(CL, "%ld", contentLength);
+    if(fd != -1) send(fd, header, sizeof(header) - 1, 0);
+    if(fd != -1) send(fd, CL, sizeof(CL) - 1, 0);
+    send(nm_sockfd, header, sizeof(header) - 1, 0);
+    send(nm_sockfd, CL, sizeof(CL) - 1, 0);
 }
 
 int recv_full(int fd, char* buf, int contentLength) {
@@ -103,27 +77,27 @@ void* handle_client(void* arg) {
     int requestID = atoi(reqdata + 1);
     switch(reqdata[0] - '0') {
         case READ:
-            ss_read(client_sockfd, vpath, requestID);
+            ss_read(client_sockfd, vpath, requestID, fp, remainingContentLength);
             break;
         case WRITE:
-            ss_write(client_sockfd, vpath, contentLength, requestID);
+            ss_write(client_sockfd, vpath, contentLength, requestID, fp, remainingContentLength);
             break;
         case CREATE:
-            ss_create(client_sockfd, vpath, UNIX_START_TIME, requestID);
+            ss_create(client_sockfd, vpath, UNIX_START_TIME, requestID, fp, remainingContentLength);
             break;
         case DELETE:
-            ss_delete(client_sockfd, vpath, requestID);
+            ss_delete(client_sockfd, vpath, requestID, fp, remainingContentLength);
             break;
         case STREAM:
-            ss_stream(client_sockfd, vpath, requestID);
+            ss_stream(client_sockfd, vpath, requestID, fp, remainingContentLength);
             break;
         case COPY:
             char vpath2[MAXPATHLENGTH + 1];
             recv(client_sockfd, vpath2, sizeof(vpath2) - 1, 0);
-            ss_copy(client_sockfd, vpath, vpath2, requestID);
+            ss_copy(client_sockfd, vpath, vpath2, requestID, fp, remainingContentLength);
             break;
         case INFO:
-            ss_info(client_sockfd, vpath, requestID);
+            ss_info(client_sockfd, vpath, requestID, fp, remainingContentLength);
             break;
         default:
             send(client_sockfd, "tf u sending brother??????????\n", strlen("tf u sending brother??????????\n"), 0);
@@ -134,21 +108,15 @@ void* handle_client(void* arg) {
     return NULL;
 }
 
-void ss_read(int fd, char* vpath, int requestID) {
+void ss_read(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     struct file* f = get_file(vpath);
     if(!f) {
-        long file_size = 0;
-        char header[20] = {'\0'}; header[0] = '0' + E_WRONG_SS;
-        sprintf(header + 10, "%ld", file_size);
-        send(fd, header, 20, 0);
+        respond(fd, E_WRONG_SS, requestID);
         return;
     }
     FILE* F = fopen(f->rpath, "r");
     if(!F) {
-        long file_size = 0;
-        char header[20] = {'\0'}; header[0] = '0' + E_FAULTY_SS;
-        sprintf(header + 10, "%ld", file_size);
-        send(fd, header, 20, 0);
+        respond(fd, E_FAULTY_SS, requestID);
         return;
     }
     fseek(F, 0, SEEK_END);
@@ -174,11 +142,11 @@ void ss_read(int fd, char* vpath, int requestID) {
     sem_post(&f->lock);
 }
 
-void ss_write(int fd, char* vpath, int contentLength, int requestID) {
+void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, int rcl) {
     struct file* f = get_file(vpath);
-    if(!f) f = ss_create(fd, vpath, UNIX_START_TIME, requestID);
+    if(!f) f = ss_create(fd, vpath, UNIX_START_TIME, requestID, tbf, rcl);
     if(!f) {
-        send(fd, "File not found\n", strlen("File not found\n"), 0);
+        respond(fd, E_FAULTY_SS, requestID);
         return;
     }
     FILE* F = fopen(f->rpath, "w");
@@ -193,10 +161,16 @@ void ss_write(int fd, char* vpath, int contentLength, int requestID) {
         n += k;
     }
     sem_post(&f->writelock);
-    if(n < contentLength) send(fd, "Incomplete write: Client disconnected\n", strlen("Incomplete write: Client disconnected\n"), 0);
+    if(n < contentLength) respond(fd, E_INCOMPLETE_WRITE, requestID);
+    else respond(fd, SUCCESS, requestID);
 }
 
-struct file* ss_create(int fd, char* vpath, char* mtime, int requestID) {
+struct file* ss_create(int fd, char* vpath, char* mtime, int requestID, char* tbf, int rcl) {
+    struct file* g = NULL;
+    if((g = get_file(vpath))) {
+        respond(fd, E_FILE_ALREADY_EXISTS, requestID);
+        return g;
+    }
     char rpath[MAXPATHLENGTH + 1];
     int pp = 1;
     sprintf(rpath, "%s%llu", "storage/", n_file_entries + pp);
@@ -210,22 +184,14 @@ struct file* ss_create(int fd, char* vpath, char* mtime, int requestID) {
     FILE* ff = fopen(rpath, "w");
     fclose(ff);
     struct file* f = add_file_entry(vpath, rpath, mtime, true);
-    if(f == NULL) {
-        send(fd, "Error creating file\n", strlen("Error creating file\n"), 0);
-    }
-    else {
-        send(fd, "File created\n", strlen("File created\n"), 0);
-    }
-    char CL[21]; CL[20] = '\0';
-    sprintf(CL, "%ld", strlen(vpath));
-    send(nm_sockfd, CL, sizeof(CL) - 1, 0);
-    send(nm_sockfd, vpath, strlen(vpath), 0);
+    if(f == NULL) respond(fd, E_FAULTY_SS, requestID);
+    else respond(fd, SUCCESS, requestID);
     return f;
 }
 
-void ss_delete(int fd, char* vpath, int requestID) {
+void ss_delete(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     struct file* f = get_file(vpath);
-    if(!f) send(fd, "File not found\n", strlen("File not found\n"), 0);
+    if(!f) respond(fd, E_FILE_DOESNT_EXIST, requestID);
     else if(remove(f->rpath)) {
         send(fd, "Error deleting file\n", strlen("Error deleting file\n"), 0);
     }
@@ -235,7 +201,7 @@ void ss_delete(int fd, char* vpath, int requestID) {
     }
 }
 
-void ss_stream(int fd, char* vpath, int requestID) {
+void ss_stream(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     struct file* f = get_file(vpath);
     if(!f) {
         send(fd, "File not found\n", strlen("File not found\n"), 0);
@@ -263,11 +229,11 @@ void ss_stream(int fd, char* vpath, int requestID) {
     sem_post(&f->lock);
 }
 
-void ss_copy(int fd, char* vpath1, char* vpath2, int requestID) {
+void ss_copy(int fd, char* vpath1, char* vpath2, int requestID, char* tbf, int rcl) {
 
 }
 
-void ss_info(int fd, char* vpath, int requestID) {
+void ss_info(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     struct file* f = get_file(vpath);
     if(f == NULL) {
         send(fd, "File not found\n", strlen("File not found\n"), 0);
@@ -302,7 +268,7 @@ void ss_info(int fd, char* vpath, int requestID) {
     fclose(F);
 }
 
-void ss_update_mtime(int fd, char* vpath, char* mtime, int requestID) {
+void ss_update_mtime(int fd, char* vpath, char* mtime, int requestID, char* tbf, int rcl) {
     struct file* f = get_file(vpath);
     if(f == NULL) {
         send(fd, "File not found\n", strlen("File not found\n"), 0);

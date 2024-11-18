@@ -300,7 +300,7 @@ void *handle_connection(void *arg)
                 close(client_socket);
                 break;
             }
-            fprintf(stderr, "recieved message %c\n", request_type);
+            fprintf(stderr, "recieved message %s\n", request_type);
 
             // Handle REQUEST_TYPE
             if (request_type == ':') // Storage server connection
@@ -361,11 +361,14 @@ void *handle_connection(void *arg)
 
                 // Remaining data contains strings (paths)
                 remaining_data = data_buffer + 5;
+
                 // remaining_length = content_len - 5;
+
 
                 // Accumulate the required strings (skip every second string)
                 accumulated_length = 0;
                 token_counter = 0;
+
 
                 token = strtok(remaining_data, " \n");
                 while (token != NULL)
@@ -398,6 +401,7 @@ void *handle_connection(void *arg)
                 handle_storage_server(client_socket, id, port, accumulated_paths);
                 fprintf(stderr, "Finished handling storage server\n");
 
+
                 free(data_buffer);
             }
             else
@@ -412,11 +416,13 @@ void *handle_connection(void *arg)
     else
     {
         // Handle client connections
+
         //fprintf(stderr, "Received request from client\n");
         fprintf(stderr, "request type: %c\n", request_type);
         handle_client(client_socket, request_type);
         close(client_socket);
     }
+
     return NULL;
 }
 
