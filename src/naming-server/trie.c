@@ -28,6 +28,7 @@ void insert_path(const char *path, int *storage_server_ids, int num_chosen, Trie
     {
         current->file_entry = (FileEntry *)malloc(sizeof(FileEntry));
         strcpy(current->file_entry->filename, path);
+
         for (int i = 0; i < num_chosen; i++)
         {
             current->file_entry->ss_ids[i] = storage_server_ids[i];
@@ -36,7 +37,7 @@ void insert_path(const char *path, int *storage_server_ids, int num_chosen, Trie
     }
 }
 
-int search_path(const char *path, TrieNode *root)
+TrieNode* search_path(const char *path, TrieNode *root)
 {
     TrieNode *current = root;
     for (int i = 0; path[i]; i++)
@@ -47,7 +48,7 @@ int search_path(const char *path, TrieNode *root)
         current = current->children[index];
     }
     if (current->file_entry)
-        return current->file_entry->ss_ids[0];
+        return current->file_entry;
     return -1; // Not found
 }
 
