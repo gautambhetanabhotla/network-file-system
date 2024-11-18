@@ -36,6 +36,8 @@ STORAGESERVER
 .....
 STOP,,,
 
+HELLO
+
 READ
 <virtual path>
 
