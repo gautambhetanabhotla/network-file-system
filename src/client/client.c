@@ -30,7 +30,16 @@ int send_it(const int op_id, const int req_id, const char * content, const int s
     snprintf(content_length, sizeof(content_length), "%ld", strlen(content));
     char request[BUFFER_SIZE];
     memset(request, 0, sizeof(request));
-    snprintf(request, sizeof(request), "%c%s%s%s", op, reqid, content_length, content);
+    request[0]  = op;
+    strncpy(&request[1], reqid, strlen(reqid));
+    strncpy(&request[10], content_length, strlen(content_length));
+    strncpy(&request[30], content, strlen(content));
+    // snprintf(request, sizeof(request), "%c%s%s%s", op, reqid, content_length, content);
+    printf("REQUEST IS\n");
+    for(int i = 0; i<30; i++){
+        printf("%c", request[i]);
+    }
+    printf("\n");
     if(send(socket, request, 30 + strlen(content), 0) < 0){
         return -1;
     } 
@@ -49,8 +58,11 @@ int long_send_it(const int op_id, const int req_id, const char * content, const 
     memset(content_length, 0, sizeof(content_length));
     snprintf(content_length, sizeof(content_length), "%lld", content_size);
     char request[BUFFER_SIZE];
-    memset(request, 0, sizeof(request));
-    snprintf(request, sizeof(request), "%c%s%s%s", op, reqid, content_length, content);
+    request[0]  = op;
+    strncpy(&request[1], reqid, strlen(reqid));
+    strncpy(&request[10], content_length, strlen(content_length));
+    strncpy(&request[30], content, strlen(content));
+    // snprintf(request, sizeof(request), "%c%s%s%s", op, reqid, content_length, content);
     if(send(socket, request, 30 + strlen(content), 0) < 0){
         return -1;
     } 
@@ -105,38 +117,38 @@ int ns_connect(const char *server_ip, int server_port) {
 }
 
 
-int ss_connect(const char *server_ip, int server_port, int * ss_socket){
-    struct sockaddr_in server_address;
+// int ss_connect(const char *server_ip, int server_port, int * ss_socket){
+//     struct sockaddr_in server_address;
 
-    // Create socket
-    (*ss_socket) = socket(AF_INET, SOCK_STREAM, 0);
-    if ((*ss_socket) < 0) {
-        perror("Storage server socket creation failed");
-        return -1;
-    }
+//     // Create socket
+//     (*ss_socket) = socket(AF_INET, SOCK_STREAM, 0);
+//     if ((*ss_socket) < 0) {
+//         perror("Storage server socket creation failed");
+//         return -1;
+//     }
 
-    // Set server address details
-    memset(&server_address, 0, sizeof(server_address));
-    server_address.sin_family = AF_INET;
-    server_address.sin_port = htons(server_port);
+//     // Set server address details
+//     memset(&server_address, 0, sizeof(server_address));
+//     server_address.sin_family = AF_INET;
+//     server_address.sin_port = htons(server_port);
 
-    // Convert and set the IP address
-    if (inet_pton(AF_INET, server_ip, &server_address.sin_addr) <= 0) {
-        perror("Invalid storage server address/ address not supported");
-        close((*ss_socket));
-        return -1;
-    }
+//     // Convert and set the IP address
+//     if (inet_pton(AF_INET, server_ip, &server_address.sin_addr) <= 0) {
+//         perror("Invalid storage server address/ address not supported");
+//         close((*ss_socket));
+//         return -1;
+//     }
 
-    if (connect((*ss_socket), (struct sockaddr *)&server_address, sizeof(server_address)) == 0) {
-        // printf("Connected to storage server at %s:%d\n", server_ip, server_port);
-        return 0;
-    }
+//     if (connect((*ss_socket), (struct sockaddr *)&server_address, sizeof(server_address)) == 0) {
+//         // printf("Connected to storage server at %s:%d\n", server_ip, server_port);
+//         return 0;
+//     }
 
-    close((*ss_socket));
-    (*ss_socket) = -1; // Reset the socket to indicate failure
-    return -1;
+//     close((*ss_socket));
+//     (*ss_socket) = -1; // Reset the socket to indicate failure
+//     return -1;
     
-}
+// }
 
 // accepted operations: 
 //READ filepath
@@ -217,30 +229,30 @@ int list(const char *folderpath) {
 }
 
 
-int ns_request(const char * request, char * response, int response_size) {
+// int ns_request(const char * request, char * response, int response_size) {
     
-    ssize_t bytes_received;
+//     ssize_t bytes_received;
 
-    // Send the request
-    if (send(ns_socket, request, strlen(request), 0) < 0) {
-        perror("Failed to send request to naming server.\n");
-        return -1;
-    }
+//     // Send the request
+//     if (send(ns_socket, request, strlen(request), 0) < 0) {
+//         perror("Failed to send request to naming server.\n");
+//         return -1;
+//     }
 
-    // printf("Response:\n");
+//     // printf("Response:\n");
 
-    // Receive and print the entire response in chunks  
-    bytes_received = recv(ns_socket, response, response_size, 0);
-    response[bytes_received] = '\0';
+//     // Receive and print the entire response in chunks  
+//     bytes_received = recv(ns_socket, response, response_size, 0);
+//     response[bytes_received] = '\0';
     
     
-    if (bytes_received < 0) {
-        perror("Failed to receive response from naming server.\n");
-        return -1;
-    }
-    // printf("\n"); // Ensure proper formatting after response
-    return 0;
-}
+//     if (bytes_received < 0) {
+//         perror("Failed to receive response from naming server.\n");
+//         return -1;
+//     }
+//     // printf("\n"); // Ensure proper formatting after response
+//     return 0;
+// }
 
 int read_it(const char * filepath){
     
@@ -882,7 +894,7 @@ int main(int argc, char* argv[]) {
     char request[BUFFER_SIZE];
     bool synchronous;
 
-    char serverip[] = "";
+    char serverip[] = "127.0.1.1";
     int serverport = 8080;
 
     int check  = ns_connect(serverip, serverport);
@@ -918,6 +930,7 @@ int main(int argc, char* argv[]) {
         // Split command and arguments
         char operation[50], arg1[FILEPATH_SIZE], arg2[FILEPATH_SIZE];
         int num_args = sscanf(request, "%49s %4096s %4096s", operation, arg1, arg2);
+        printf("%s\n%s\n%s IS OVER", operation, arg1, arg2);
 
         // Determine the operation and call the corresponding function
         if (strcmp(operation, "WRITE") == 0 && num_args == 3) {

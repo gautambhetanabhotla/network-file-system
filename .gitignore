@@ -9,3 +9,4 @@ paths.txt
 test.c
 *.swp
 *.out
+*.bin
