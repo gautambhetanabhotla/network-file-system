@@ -5,10 +5,16 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <ao/ao.h>
+#include <pthread.h>
 #define TIMEOUT 5 // TIMEOUT in seconds, if ACK is not received in TIMEOUT 
 #define FILEPATH_SIZE 4096
 #define BUFFER_SIZE (2 * FILEPATH_SIZE + 200)
+#define ASYNC_SIZE 2000 // if it >= ASYNC_SIZE, it will be sent asynchronously if there is no --SYNC flag
 
+typedef struct {
+    FILE *file;
+    int ss_socket;
+} ThreadArgs;
 
 
 int send_it(const int op_id, const int req_id, const char * content, const int socket){
@@ -81,9 +87,9 @@ int ns_connect(const char *server_ip, int server_port) {
     while (attempt < TIMEOUT) {
         printf("Trying to connect...\n");
         if (connect(ns_socket, (struct sockaddr *)&server_address, sizeof(server_address)) == 0) {
-            if (send(ns_socket, "CLIENT\0\0\0\0\0\0\0", 13,0) < 0){
-                break;
-            }
+            // if (send(ns_socket, "CLIENT\0\0\0\0\0\0\0", 13,0) < 0){
+            //     break;
+            // }
             printf("Connected to naming server at %s:%d\n", server_ip, server_port);
             return 0;
         }
@@ -579,8 +585,64 @@ int stream(const char * filepath){
 
 
 
+void * write_async(void *args) {
+    ThreadArgs *threadArgs = (ThreadArgs *)args;
+    FILE *f = threadArgs->file;
+    int ss_socket = threadArgs->ss_socket;
+
+    size_t bytesRead;
+    long long int totalbytesread = 0;
+    long long int fileSize;
+    char data_buffer[BUFFER_SIZE];
+    char ss_response[31];
+
+    // Calculate file size
+    fseek(f, 0, SEEK_END);
+    fileSize = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    while ((bytesRead = fread(data_buffer, 1, BUFFER_SIZE, f)) > 0) {
+        totalbytesread += bytesRead;
+
+        if (totalbytesread == fileSize) {
+            if (send(ss_socket, data_buffer, bytesRead, 0) < 0) {
+                printf("Failed to send complete data to storage server with socket number %d. %lld bytes sent successfully.\n", ss_socket, totalbytesread - bytesRead);
+                fclose(f);
+                close(ss_socket);
+                free(threadArgs);
+                return NULL;
+            }
+            printf("\nSuccess! Data wholly sent to storage server at socket %d!\n", ss_socket);
+            if (recv(ss_socket, ss_response, 30, 0) < 30 || ss_response[0] != '0') {
+                printf("However, storage server did not acknowledge the whole data being written.\n");
+            } else {
+                printf("Storage server at socket %d acknowledged the whole data being successfully written.\n", ss_socket);
+            }
+            break;
+        }
+        if (send(ss_socket, data_buffer, BUFFER_SIZE, 0) < 0) {
+            printf("Failed to send complete data to storage server at socket %d. %lld bytes sent successfully.\n", ss_socket, totalbytesread - bytesRead);
+            fclose(f);
+            close(ss_socket);
+            free(threadArgs);
+            return NULL;
+        }
+    }
+
+    if (ferror(f)) {
+        perror("Error reading file");
+    }
+
+    fclose(f);
+    close(ss_socket);
+    free(threadArgs);
+    return NULL;
+}
+
 
 int write_it(const char * sourcefilepath, const char * destfilepath, bool synchronous){
+
+
     FILE * f = fopen(sourcefilepath, "rb");
     if (f == NULL) {
         perror("Error opening file");
@@ -718,45 +780,103 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
         printf("Failed to send request to storage server.\n");
     }
 
-    size_t bytesRead;
-    long long int totalbytesread = 0;
+    char ss_response[31];
+    memset(ss_response, 0, sizeof(ss_response));
+    if (recv(ss_socket, ss_response, 30, 0) < 30){
+        printf("Failed to receive response from storage server.\n");
+        close(ss_socket);
+        fclose(f);
+        return -1;
+    }
 
-    while ((bytesRead = fread(data_buffer, 1, BUFFER_SIZE, f)) > 0) {
-        totalbytesread += bytesRead;
-        // Simulate transmission by writing to stdout
+    ss_response[30] = '\0';
 
-        if (totalbytesread == fileSize){
-            if (send(ss_socket, data_buffer,  bytesRead, 0)<0){
+    if (ss_response[0] != '1'){
+        printf("Storage server did not accept the request.\n");
+        close(ss_socket);
+        fclose(f);
+        return -1;        
+    }
+    // now, ACK 1 has been received from SS
+    // request acknowledged, we can begin writing
+    if (synchronous || fileSize <= ASYNC_SIZE){
+
+        size_t bytesRead;
+        long long int totalbytesread = 0;
+
+        while ((bytesRead = fread(data_buffer, 1, BUFFER_SIZE, f)) > 0) {
+            totalbytesread += bytesRead;
+            // Simulate transmission by writing to stdout
+
+            if (totalbytesread == fileSize){
+                if (send(ss_socket, data_buffer,  bytesRead, 0)<0){
+                    printf("Failed to send complete data to storage server. %lld bytes sent successfully.\n", totalbytesread - bytesRead);
+                    fclose(f);
+                    close(ss_socket);
+                    return -1;
+                }
+                printf("\nSuccess! Data wholly sent!\n");
+                if(recv(ss_socket, ss_response, 30, 0)< 30 || ss_response[0] != '0'){
+                    printf("However, storage server did not acknowledge the whole data being written.\n");
+                }
+                else{
+                    printf("Storage server acknowledged the whole data being successfully written.\n");
+                }
+                break;
+            }
+            if (send(ss_socket, data_buffer,  BUFFER_SIZE, 0)<0){
                 printf("Failed to send complete data to storage server. %lld bytes sent successfully.\n", totalbytesread - bytesRead);
                 fclose(f);
                 close(ss_socket);
                 return -1;
             }
-            printf("\nSuccess! Data written wholly!\n");
-            break;
         }
-        if (send(ss_socket, data_buffer,  BUFFER_SIZE, 0)<0){
-            printf("Failed to send complete data to storage server. %lld bytes sent successfully.\n", totalbytesread - bytesRead);
+
+        if (ferror(f)) {
+            perror("Error reading file");
             fclose(f);
             close(ss_socket);
             return -1;
         }
-    }
 
-    if (ferror(f)) {
-        perror("Error reading file");
+        
+
         fclose(f);
         close(ss_socket);
-        return -1;
+        return 0;
+
+    }
+    else{// ASYNC write activated here
+
+        ThreadArgs *threadArgs = malloc(sizeof(ThreadArgs));
+        if (!threadArgs) {
+            perror("Failed to allocate memory for thread arguments\n");
+            fclose(f);
+            return -1;
+        }
+
+        threadArgs->file = f;
+        threadArgs->ss_socket = ss_socket;
+
+        pthread_t thread_id;
+        if (pthread_create(&thread_id, NULL, write_async, threadArgs) != 0) {
+            perror("Failed to create thread\n");
+            free(threadArgs);
+            close(ss_socket);
+            fclose(f);
+            return -1;
+        }
+        printf("Asynchronous write was successfully activated because the file was too large. Your request with reqid %d is being processed at ss_socket %d\n", req_id, ss_socket);
+
+        // Detach the thread so it runs independently
+        pthread_detach(thread_id);
+
+        return 0;
     }
 
-    
-
-    fclose(f);
-    close(ss_socket);
-    return 0;
-
 }
+
+
 
 int main(int argc, char* argv[]) {
     char request[BUFFER_SIZE];
