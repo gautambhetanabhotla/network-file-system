@@ -121,7 +121,7 @@ void update_registry(StorageServerInfo *ss_info);
 void send_error(int socket_fd, ErrorCode code, const char *message);
 void send_ack(int socket_fd, const char *message);
 int register_storage_server(const char *ip, int port);
-void handle_client(int client_socket, char *buffer);
+void handle_client(int client_socket, char initial_request_type);
 void signal_handler(int sig);
 TrieNode *create_trie_node();
 void insert_path(const char *path, int *storage_server_ids, int num_chosen, TrieNode *root);
