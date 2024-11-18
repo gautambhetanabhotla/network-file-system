@@ -459,6 +459,8 @@ void handle_client(int client_socket, char initial_request_type)
 
     int client_req_id = atoi(id_str);
     long content_length = atol(content_length_str);
+    fprintf(stderr, "client_req_id: %d\n", client_req_id);
+    fprintf(stderr, "content_length: %ld\n", content_length);
 
     // Read content from client
     char *content = malloc(content_length + 1);
@@ -478,6 +480,7 @@ void handle_client(int client_socket, char initial_request_type)
         return;
     }
     content[content_length] = '\0';
+    fprintf(stderr, "content: %s\n", content);
 
     // Handle the request based on request_type
     if (request_type == '6') // '6' for CREATE
@@ -506,7 +509,6 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
 
 void handle_rws_request(int client_socket, int client_req_id, char *content, long content_length, char request_type)
 {
-
     char* path_buffer = malloc(content_length + 1);
     if (path_buffer == NULL)
     {
@@ -515,18 +517,10 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
         return NULL;
     }
     int total_read = 0;
-    while(total_read < content_length) {
-        int bytes_read = recv(client_socket, path_buffer + total_read, content_length - total_read, 0);
-        if (bytes_read <= 0) {
-            fprintf(stderr, "Failed to read data\n");
-            free(path_buffer);
-            close(client_socket);
-            return NULL;
-        }
-        total_read += bytes_read;
-    }
-    fprintf(stderr, "path_buffer: %s\n", path_buffer);
-    int id = search_path(path_buffer, root);
+    fprintf(stderr, "content_length: %ld\n", content_length);
+    fprintf(stderr, "content: %s\n", content);
+
+    int id = search_path(content, root);
     if(id<0) {
         fprintf(stderr, "path not found\n");
         send_error_response(client_socket, client_req_id, "path not found\n");
