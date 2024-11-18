@@ -14,7 +14,7 @@ TrieNode *create_trie_node()
     return node;
 }
 
-void insert_path(const char *path, int *storage_server_ids, int num_chosen, TrieNode *root)
+FileEntry* insert_path(const char *path, int *storage_server_ids, int num_chosen, TrieNode *root)
 {
     TrieNode *current = root;
     for (int i = 0; path[i]; i++)
@@ -35,6 +35,12 @@ void insert_path(const char *path, int *storage_server_ids, int num_chosen, Trie
             storage_servers[storage_server_ids[i]].file_count++;
         }
     }
+    return current->file_entry;
+}
+
+void set_file_entry_timestamp(FileEntry *file, const char *timestamp)
+{
+    strcpy(file->last_modified, timestamp);
 }
 
 TrieNode* search_path(const char *path, TrieNode *root)
