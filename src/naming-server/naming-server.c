@@ -1,16 +1,15 @@
 #include "main.h"
 
-//f Global port
+// f Global port
 TrieNode *root;
 StorageServerInfo storage_servers[MAX_STORAGE_SERVERS];
 int storage_server_count = 0;
-struct lru_cache *cache; // Cache pointer
-sem_t storage_server_sem;                 // Semaphore to track storage servers
-pthread_mutex_t storage_server_mutex;     // Mutex to protect storage_server_count
+struct lru_cache *cache;              // Cache pointer
+sem_t storage_server_sem;             // Semaphore to track storage servers
+pthread_mutex_t storage_server_mutex; // Mutex to protect storage_server_count
 int round_robin_counter = 0;
 
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length);
-
 
 // Helper function to write n bytes to a socket
 ssize_t write_n_bytes(int socket_fd, const void *buffer, size_t n)
@@ -52,6 +51,12 @@ void send_error_response(int client_socket, int req_id, const char *error_msg)
     write_n_bytes(client_socket, error_msg, content_length);
 }
 
+
+void send_port_ip(int client_socket, int port, char* ip)
+{
+    
+}
+
 ssize_t read_n_bytes(int socket_fd, void *buffer, size_t n)
 {
     size_t total_read = 0;
@@ -74,8 +79,6 @@ ssize_t read_n_bytes(int socket_fd, void *buffer, size_t n)
     }
     return total_read;
 }
-
-
 
 void choose_least_full_servers(int *chosen_servers, int *num_chosen)
 {
@@ -109,7 +112,6 @@ void choose_least_full_servers(int *chosen_servers, int *num_chosen)
         }
     }
 }
-
 
 void signal_handler(int sig)
 {
@@ -167,7 +169,6 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
     pthread_mutex_unlock(&storage_server_mutex);
 }
 
-
 void *handle_connection(void *arg)
 {
     int client_socket = *(int *)arg;
@@ -215,7 +216,7 @@ void *handle_connection(void *arg)
         int content_len = atoi(content_length);
 
         // Allocate buffer for data
-        char* data_buffer = malloc(content_len + 1);
+        char *data_buffer = malloc(content_len + 1);
         if (data_buffer == NULL)
         {
             fprintf(stderr, "Failed to allocate memory for data buffer\n");
@@ -247,7 +248,7 @@ void *handle_connection(void *arg)
         int port = atoi(port_str);
 
         // Remaining data contains strings (paths)
-        char* remaining_data = data_buffer + 5;
+        char *remaining_data = data_buffer + 5;
         // size_t remaining_length = content_len - 5;
 
         // Accumulate the required strings (skip every second string)
@@ -255,7 +256,7 @@ void *handle_connection(void *arg)
         size_t accumulated_length = 0;
         int token_counter = 0;
 
-        char* token = strtok(remaining_data, " \n");
+        char *token = strtok(remaining_data, " \n");
         while (token != NULL)
         {
             if (token_counter % 2 == 0)
@@ -364,11 +365,9 @@ void *handle_connection(void *arg)
 
                 // remaining_length = content_len - 5;
 
-
                 // Accumulate the required strings (skip every second string)
                 accumulated_length = 0;
                 token_counter = 0;
-
 
                 token = strtok(remaining_data, " \n");
                 while (token != NULL)
@@ -401,7 +400,6 @@ void *handle_connection(void *arg)
                 handle_storage_server(client_socket, id, port, accumulated_paths);
                 fprintf(stderr, "Finished handling storage server\n");
 
-
                 free(data_buffer);
             }
             else
@@ -417,7 +415,7 @@ void *handle_connection(void *arg)
     {
         // Handle client connections
 
-        //fprintf(stderr, "Received request from client\n");
+        // fprintf(stderr, "Received request from client\n");
         fprintf(stderr, "request type: %c\n", request_type);
         handle_client(client_socket, request_type);
         close(client_socket);
@@ -442,10 +440,9 @@ void handle_client(int client_socket, char initial_request_type)
         close(client_socket);
         return;
     }
-    //fprintf(stderr, "blalalal\n");
+    // fprintf(stderr, "blalalal\n");
     fprintf(stderr, "header: %s\n", header);
 
-    
     char request_type = header[0];
 
     // Parse header fields
@@ -488,6 +485,11 @@ void handle_client(int client_socket, char initial_request_type)
         fprintf(stderr, "Received CREATE request from client\n");
         handle_create_request(client_socket, client_req_id, content, content_length);
     }
+    else if (request_type == '1' || request_type == '2' || request_type == '3')
+    {
+        fprintf(stderr, "Received READ/WRITE/STREAM request from client\n");
+        handle_rws_request(client_socket, client_req_id, content, content_length, request_type);
+    }
     else
     {
         fprintf(stderr, "Invalid request type received: %c\n", request_type);
@@ -497,8 +499,76 @@ void handle_client(int client_socket, char initial_request_type)
     free(content);
 }
 
-void handle_create_request(int client_socket, int client_req_id, char *content, long content_length){
+void handle_create_request(int client_socket, int client_req_id, char *content, long content_length)
+{
     fprintf(stderr, "Handling create request %d %s %ld\n", client_req_id, content, content_length);
+}
+
+void handle_rws_request(int client_socket, int client_req_id, char *content, long content_length, char request_type)
+{
+
+    char* path_buffer = malloc(content_length + 1);
+    if (path_buffer == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for data buffer\n");
+        close(client_socket);
+        return NULL;
+    }
+    int total_read = 0;
+    while(total_read < content_length) {
+        int bytes_read = recv(client_socket, path_buffer + total_read, content_length - total_read, 0);
+        if (bytes_read <= 0) {
+            fprintf(stderr, "Failed to read data\n");
+            free(path_buffer);
+            close(client_socket);
+            return NULL;
+        }
+        total_read += bytes_read;
+    }
+    fprintf(stderr, "path_buffer: %s\n", path_buffer);
+    int id = search_path(path_buffer, root);
+    if(id<0) {
+        fprintf(stderr, "path not found\n");
+        send_error_response(client_socket, client_req_id, "path not found\n");
+    }
+    else
+    {
+        // Get storage server information
+        StorageServerInfo ss_info = storage_servers[id];
+
+        // Prepare response content with IP and Port
+        char response_content[256];
+        snprintf(response_content, sizeof(response_content), "%s\n%d\n", ss_info.ip_address, ss_info.port);
+        size_t response_content_length = strlen(response_content);
+
+        // Prepare header
+        char header[31]; // 30 bytes + null terminator
+        char req_id_str[10];
+        char content_length_str[21];
+
+        snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
+        snprintf(content_length_str, sizeof(content_length_str), "%020zu", response_content_length);
+
+        header[0] = '0'; // Acknowledgment byte indicating success
+        strncpy(&header[1], req_id_str, 9);
+        strncpy(&header[10], content_length_str, 20);
+        header[30] = '\0';
+
+        // Send header and content to client
+        if (write_n_bytes(client_socket, header, 30) != 30 ||
+            write_n_bytes(client_socket, response_content, response_content_length) != (ssize_t)response_content_length)
+        {
+            fprintf(stderr, "Failed to send response to client\n");
+            close(client_socket);
+            free(path_buffer);
+            return;
+        }
+
+        fprintf(stderr, "Sent storage server info to client: IP=%s, Port=%d\n", ss_info.ip_address, ss_info.port);
+    }
+
+    free(path_buffer);
+    fprintf(stderr, "Handled rws request %d %s %ld %c\n", client_req_id, content, content_length, request_type);
 }
 
 void *accept_connections(void *arg)
@@ -554,9 +624,9 @@ int main(int argc, char *argv[])
     cache = init_cache(CACHE_SIZE);
 
     // Load Trie and Cache from files
-    load_trie("trie_data.bin",root);
+    load_trie("trie_data.bin", root);
 
-    load_cache("cache_data.bin",cache);
+    load_cache("cache_data.bin", cache);
 
     // Set up signal handlers to save data on exit
     signal(SIGINT, signal_handler);
@@ -579,7 +649,7 @@ int main(int argc, char *argv[])
 
     // Set Options
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT,
-                    &opt, sizeof(opt)))
+                   &opt, sizeof(opt)))
     {
         perror("Setsockopt");
         exit(EXIT_FAILURE);
@@ -605,7 +675,6 @@ int main(int argc, char *argv[])
 
     printf("Naming Server listening on port %d\n", port);
 
-
     pthread_t accept_thread;
     pthread_create(&accept_thread, NULL, accept_connections, (void *)&server_fd);
     // Main loop to accept and handle clients sequentially
@@ -618,4 +687,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
