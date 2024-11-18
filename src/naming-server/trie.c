@@ -28,6 +28,7 @@ FileEntry* insert_path(const char *path, int *storage_server_ids, int num_chosen
     {
         current->file_entry = (FileEntry *)malloc(sizeof(FileEntry));
         strcpy(current->file_entry->filename, path);
+
         for (int i = 0; i < num_chosen; i++)
         {
             current->file_entry->ss_ids[i] = storage_server_ids[i];
@@ -42,7 +43,7 @@ void set_file_entry_timestamp(FileEntry *file, const char *timestamp)
     strcpy(file->last_modified, timestamp);
 }
 
-int search_path(const char *path, TrieNode *root)
+TrieNode* search_path(const char *path, TrieNode *root)
 {
     TrieNode *current = root;
     for (int i = 0; path[i]; i++)
@@ -53,8 +54,8 @@ int search_path(const char *path, TrieNode *root)
         current = current->children[index];
     }
     if (current->file_entry)
-        return current->file_entry->ss_ids[0];
-    return -1; // Not found
+        return current->file_entry;
+    return NULL; // Not found
 }
 
 void save_trie(const char *filename, TrieNode *root)

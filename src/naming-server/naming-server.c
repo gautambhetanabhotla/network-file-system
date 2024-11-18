@@ -8,6 +8,9 @@ struct lru_cache *cache;              // Cache pointer
 sem_t storage_server_sem;             // Semaphore to track storage servers
 pthread_mutex_t storage_server_mutex; // Mutex to protect storage_server_count
 int round_robin_counter = 0;
+pthread_mutex_t global_req_id_mutex; // Mutex to protect global request ID
+int global_req_id = 1;
+pthread_mutex_t trie_mutex; // Mutex to protect trie operations
 
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length);
 
@@ -51,10 +54,8 @@ void send_error_response(int client_socket, int req_id, const char *error_msg)
     write_n_bytes(client_socket, error_msg, content_length);
 }
 
-
-void send_port_ip(int client_socket, int port, char* ip)
+void send_port_ip(int client_socket, int port, char *ip)
 {
-    
 }
 
 ssize_t read_n_bytes(int socket_fd, void *buffer, size_t n)
@@ -122,15 +123,15 @@ void signal_handler(int sig)
 }
 
 // Register a Storage Server
-int register_storage_server(const char *ip, int port)
+int register_storage_server(const char *ip, int port_c, int port_ns)
 {
     int id = storage_server_count++;
     storage_servers[id].id = id;
     strcpy(storage_servers[id].ip_address, ip);
-    storage_servers[id].port = port;
+    storage_servers[id].port = port_ns;
+    storage_servers[id].client_port = port_c;
     storage_servers[id].file_count = 0;
-    storage_servers[id].is_active = 1;
-    printf("Registered Storage Server %d: %s:%d\n", id, ip, port);
+    printf("Registered Storage Server %d: %s:%d\n", id, ip, port_ns);
     return id;
 }
 
@@ -144,9 +145,12 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
     getpeername(client_socket, (struct sockaddr *)&addr, &addr_size);
     char *ip = inet_ntoa(addr.sin_addr);
 
+    // get port through which sotrage server is communicating
+    int port_ns = ntohs(addr.sin_port);
+
     // Register storage server
     pthread_mutex_lock(&storage_server_mutex);
-    int ss_id = register_storage_server(ip, port);
+    int ss_id = register_storage_server(ip, port, port_ns);
     pthread_mutex_unlock(&storage_server_mutex);
 
     // Process the accumulated paths and insert them into the trie
@@ -155,6 +159,14 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
     char *line = strtok_r(paths, "\n", &saveptr1);
     while (line != NULL)
     {
+        // Insert the path into the trie
+        // choose least full servers
+        int chosen_servers[3];
+        int num_chosen = 0;
+        choose_least_full_servers(chosen_servers, &num_chosen);
+        insert_path(path, chosen_servers, num_chosen, root);
+        // Move to the next path
+        path = strtok(NULL, "\n");
         // Split the line into path and timestamp
         char *path = strtok_r(line, " ", &saveptr2);
         char *timestamp = strtok_r(NULL, " ", &saveptr2);
@@ -459,12 +471,103 @@ void handle_client(int client_socket, char initial_request_type)
 
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length)
 {
-    fprintf(stderr, "Handling create request %d %s %ld\n", client_req_id, content, content_length);
+    pthread_mutex_lock(&global_req_id_mutex);
+    int storage_req_id = global_req_id++;
+    pthread_mutex_unlock(&global_req_id_mutex);
+    client_req_id = storage_req_id;
+
+    // Parse content into folderpath and name
+    char *folderpath = (char *)malloc(content_length + 1);
+    char *name = (char *)malloc(content_length + 1);
+    fprintf(stderr, "content: %s\n", content);
+
+    char *saveptr;
+    char *exist_folder = strtok_r(content, "\n", &saveptr);
+    fprintf(stderr, "exist_folder: %s\n", exist_folder);
+
+    FileEntry *file = search_path(exist_folder, root);
+    if (file == NULL)
+    {
+        fprintf(stderr, "Folder does not exist\n");
+        send_error_response(client_socket, client_req_id, "Error: Folder does not exist\n");
+        return;
+    }
+    else
+    {
+
+        fprintf(stderr, "Folder exists\n");
+
+        char *to_create = strtok_r(NULL, "\n", &saveptr);
+        fprintf(stderr, "to_create: %s\n", to_create);
+        if (to_create[strlen(to_create) - 1] == '/')
+        {
+            int storage_server_ids[3];
+            int num_chosen = 0;
+            choose_least_full_servers(storage_server_ids, &num_chosen);
+            insert_path(to_create, storage_server_ids, num_chosen, root);
+        }
+        else
+        {
+            char file_path[4096];
+            snprintf(file_path, sizeof(file_path), "%s/%s", folderpath, name);
+            char header[31]; // 30 bytes + null terminator
+            char req_id_str[10];
+            char content_length_str[21];
+            char operation_type = '6';               // '6' for CREATE
+            int path_length = strlen(file_path) + 1; // Include null terminator
+            // send 30 bytes header: 1 byte operation type, 9 bytes request id, 20 bytes content length
+            snprintf(req_id_str, sizeof(req_id_str), "%09d", global_req_id);
+            snprintf(content_length_str, sizeof(content_length_str), "%020ld", path_length);
+            snprintf(header, sizeof(header), "%c%s%s", operation_type, req_id_str, content_length_str);
+            // send request to the 3 storage servers of the file entry
+            for(int i=0; i<3;i++)
+            {
+                // send request to storage server
+                // send header along file path to the storage server
+                int ssid = file->ss_ids[i];
+                StorageServerInfo ss_info = storage_servers[ssid];
+                // connect to storage server using IP and Port in the ssinfo using connect and sockaddr
+                struct sockaddr_in storage_server_addr;
+                storage_server_addr.sin_family = AF_INET;
+                storage_server_addr.sin_port = htons(ss_info.port);
+                storage_server_addr.sin_addr.s_addr = inet_addr(ss_info.ip_address);
+                int storage_server_socket = socket(AF_INET, SOCK_STREAM, 0);
+                // connect 
+                if (storage_server_socket < 0)
+                {
+                    fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
+                    send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
+                    return;
+                }
+                if(connect(storage_server_socket, (struct sockaddr *)&storage_server_addr, sizeof(storage_server_addr)) < 0)
+                {
+                    fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
+                    send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
+                    return;
+                }
+
+                if (write_n_bytes(storage_server_socket, header, 30) != 30 ||
+                    write_n_bytes(storage_server_socket, file_path, path_length) != (ssize_t)path_length)
+                {
+                    fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
+                    send_error_response(client_socket, client_req_id, "Failed to send request to storage server\n");
+                    close(storage_server_socket);
+                    return;
+                }
+                close(storage_server_socket);
+            }
+        }
+    }
+    // Prepare header
+
+    // send header along file path to the storage server
+
+    // char *content_copy = strdup(content);
 }
 
 void handle_rws_request(int client_socket, int client_req_id, char *content, long content_length, char request_type)
 {
-    char* path_buffer = malloc(content_length + 1);
+    char *path_buffer = malloc(content_length + 1);
     if (path_buffer == NULL)
     {
         fprintf(stderr, "Failed to allocate memory for data buffer\n");
@@ -476,7 +579,8 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
     fprintf(stderr, "content: %s\n", content);
 
     int id = search_path(content, root);
-    if(id<0) {
+    if (id < 0)
+    {
         fprintf(stderr, "path not found\n");
         send_error_response(client_socket, client_req_id, "path not found\n");
     }
@@ -484,7 +588,6 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
     {
         // Get storage server information
         StorageServerInfo ss_info = storage_servers[id];
-
         // Prepare response content with IP and Port
         char response_content[256];
         snprintf(response_content, sizeof(response_content), "%s\n%d\n", ss_info.ip_address, ss_info.port);
@@ -512,7 +615,6 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
             free(path_buffer);
             return;
         }
-
         fprintf(stderr, "Sent storage server info to client: IP=%s, Port=%d\n", ss_info.ip_address, ss_info.port);
     }
 
