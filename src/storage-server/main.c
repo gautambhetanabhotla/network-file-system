@@ -149,14 +149,13 @@ int main(int argc, char* argv[]) {
         fclose(pathsfile);
     }
     fprintf(stderr, "SENDING CONTENT LENGTH %ld\n", byte_count);
-    request(-1, HELLO, (long)5 + byte_count);
+    request(nm_sockfd, -1, HELLO, (long)5 + byte_count);
     // Send the port you're using to listen for clients
     char port_str[6] = {'\0'};
     sprintf(port_str, "%d", PORT);
     send(nm_sockfd, port_str, sizeof(port_str) - 1, 0);
     // Send the list of accessible paths
     send_paths(nm_sockfd); 
-    // send(nm_sockfd, "STOP,,,\n", strlen("STOP,,,\n"), 0);
 
     while(1) {
         struct sockaddr_in client_addr;
