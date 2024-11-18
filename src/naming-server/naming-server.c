@@ -88,7 +88,7 @@ int register_storage_server(const char *ip, int port)
     return id;
 }
 
-void handle_storage_server(int client_socket, char *id, char *data)
+void handle_storage_server(int client_socket, char *id, int port, char *paths)
 {
     fprintf(stderr, "Handling storage server with ID: %s\n", id);
 
@@ -98,15 +98,30 @@ void handle_storage_server(int client_socket, char *id, char *data)
     getpeername(client_socket, (struct sockaddr *)&addr, &addr_size);
     char *ip = inet_ntoa(addr.sin_addr);
 
-    int port = atoi(data); // Assuming the data contains the port number
-
     // Register storage server
     pthread_mutex_lock(&storage_server_mutex);
     int ss_id = register_storage_server(ip, port);
     pthread_mutex_unlock(&storage_server_mutex);
 
-    // Process additional data if needed
-    // For example, if the data contains file paths or other info
+    // Process the accumulated paths and insert them into the trie
+    char *path = strtok(paths, "\n");
+    while (path != NULL)
+    {
+        // Insert the path into the trie
+        insert_path(path, &ss_id, 1, root);
+
+        // Move to the next path
+        path = strtok(NULL, "\n");
+    }
+
+    // If this is the first storage server, post the semaphore
+    pthread_mutex_lock(&storage_server_mutex);
+    if (storage_server_count == 1)
+    {
+        printf("At least one storage server is connected\n");
+        sem_post(&storage_server_sem);
+    }
+    pthread_mutex_unlock(&storage_server_mutex);
 }
 
 
@@ -116,93 +131,137 @@ void *handle_connection(void *arg)
     free(arg);
 
     char request_type;
-    char id[10];                 // 9 bytes for ID + 1 for null terminator
-    char content_length_str[21]; // 20 bytes for content length + 1 for null terminator
     ssize_t bytes_received;
-    char *data_buffer = NULL;    // Buffer to hold the data based on content length
 
-    while (1)
+    // Read REQUEST_TYPE (1 byte)
+    bytes_received = read_n_bytes(client_socket, &request_type, 1);
+    if (bytes_received != 1)
     {
-        // Read REQUEST_TYPE (1 byte)
-        bytes_received = read_n_bytes(client_socket, &request_type, 1);
-        if (bytes_received != 1)
-        {
-            fprintf(stderr, "Failed to read REQUEST_TYPE\n");
-            break;
-        }
+        fprintf(stderr, "Failed to read REQUEST_TYPE\n");
+        close(client_socket);
+        return NULL;
+    } 
+
+    // Handle REQUEST_TYPE
+    if (request_type == ':' || request_type == ('0' + 10)) // ':' or 'H' for HELLO
+    {
+        fprintf(stderr, "Received HELLO from storage server\n");
+
+        char id[10];
+        char content_length[21];
 
         // Read ID (9 bytes)
         bytes_received = read_n_bytes(client_socket, id, 9);
+        fprintf(stderr, "ID: %s\n", id);
         if (bytes_received != 9)
         {
             fprintf(stderr, "Failed to read ID\n");
-            break;
+            close(client_socket);
+            return NULL;
         }
-        id[9] = '\0'; // Null-terminate the ID string
+        id[9] = '\0';
 
         // Read CONTENT_LENGTH (20 bytes)
-        bytes_received = read_n_bytes(client_socket, content_length_str, 20);
+        bytes_received = read_n_bytes(client_socket, content_length, 20);
+        fprintf(stderr, "CONTENT_LENGTH: %s\n", content_length);
         if (bytes_received != 20)
         {
-            fprintf(stderr, "Failed to read CONTENT_LENGTH\n");
-            break;
+            fprintf(stderr, "Failed to read content length\n");
+            close(client_socket);
+            return NULL;
         }
-        content_length_str[20] = '\0'; // Null-terminate the content length string
-        int content_length = atoi(content_length_str);
+        content_length[20] = '\0';
+        int content_len = atoi(content_length);
+        fprintf(stderr, "Content Length: %d\n", content_len);
 
         // Allocate buffer for data
-        data_buffer = malloc(content_length + 1);
+        char* data_buffer = malloc(content_len + 1);
         if (data_buffer == NULL)
         {
-            fprintf(stderr, "Failed to allocate memory for data_buffer\n");
-            break;
+            fprintf(stderr, "Failed to allocate memory for data buffer\n");
+            close(client_socket);
+            return NULL;
         }
 
-        // Read DATA (CONTENT_LENGTH bytes)
-        bytes_received = read_n_bytes(client_socket, data_buffer, content_length);
-        if (bytes_received != content_length)
+        // Read DATA (CONTENT_LENGTH bytes) in a loop
+        size_t total_bytes_read = 0;
+        while (total_bytes_read < content_len)
         {
-            fprintf(stderr, "Failed to read data\n");
-            free(data_buffer);
-            break;
-        }
-        data_buffer[content_length] = '\0'; // Null-terminate the data
-
-        // Handle REQUEST_TYPE
-        if (request_type == 'H') // 'H' for HELLO
-        {
-            fprintf(stderr, "Received HELLO from storage server\n");
-
-            // Initialize storage server
-            handle_storage_server(client_socket, id, data_buffer);
-
-            // If this is the first storage server, post the semaphore
-            pthread_mutex_lock(&storage_server_mutex);
-            if (storage_server_count == 1)
+            bytes_received = recv(client_socket, data_buffer + total_bytes_read, content_len - total_bytes_read, 0);
+            if (bytes_received <= 0)
             {
-                printf("At least one storage server is connected\n");
-                sem_post(&storage_server_sem);
+                fprintf(stderr, "Failed to read data\n");
+                free(data_buffer);
+                close(client_socket);
+                return NULL;
             }
-            pthread_mutex_unlock(&storage_server_mutex);
+            fprintf(stderr, "Received %ld bytes\n", bytes_received);
+            fprintf(stderr, "Data: %s\n", data_buffer);
+            total_bytes_read += bytes_received;
         }
-        else
+        data_buffer[content_len] = '\0'; // Null-terminate the data
+
+        // Process the DATA
+        // First 5 bytes are the port number
+        char port_str[6];
+        memcpy(port_str, data_buffer, 5);
+        port_str[5] = '\0'; // Null-terminate the port string
+        int port = atoi(port_str);
+        fprintf(stderr, "Port: %d\n", port);
+
+        // Remaining data contains strings (paths)
+        char* remaining_data = data_buffer + 5;
+        size_t remaining_length = content_len - 5;
+
+        // Accumulate the required strings (skip every second string)
+        char accumulated_paths[16384]; // Adjust size as needed
+        size_t accumulated_length = 0;
+        int token_counter = 0;
+
+        char* token = strtok(remaining_data, " \n");
+        while (token != NULL)
         {
-            // Handle other request types if needed
-            fprintf(stderr, "Received REQUEST_TYPE: %c\n", request_type);
-            // TODO: Implement handling for other request types
+            if (token_counter % 2 == 0)
+            {
+                size_t token_length = strlen(token);
+                // Ensure we don't exceed the buffer size
+                if (accumulated_length + token_length + 1 < sizeof(accumulated_paths))
+                {
+                    memcpy(accumulated_paths + accumulated_length, token, token_length);
+                    accumulated_length += token_length;
+                    accumulated_paths[accumulated_length] = '\n'; // Separate paths with a newline
+                    accumulated_length++;
+                }
+                else
+                {
+                    fprintf(stderr, "Accumulated paths buffer overflow\n");
+                    free(data_buffer);
+                    close(client_socket);
+                    return NULL;
+                }
+            }
+            token_counter++;
+            token = strtok(NULL, " \n");
         }
+        accumulated_paths[accumulated_length] = '\0'; // Null-terminate the accumulated paths
 
-        // Free the data buffer for the next iteration
+        // Call handle_storage_server with the port number and accumulated paths
+        handle_storage_server(client_socket, id, port, accumulated_paths);
+
         free(data_buffer);
-        data_buffer = NULL;
-    }
 
-    // Cleanup and close the connection
-    if (data_buffer != NULL)
+        // Continue to listen to the storage server if needed
+        // This can be implemented here if you have more communication
+
+        close(client_socket);
+    }
+    else
     {
-        free(data_buffer);
+        // Handle client connections
+        handle_client(client_socket, &request_type);
+        close(client_socket);
     }
-    close(client_socket);
+
     return NULL;
 }
 
