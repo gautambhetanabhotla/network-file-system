@@ -102,8 +102,14 @@ void send_paths(int nm_sockfd) {
         send(nm_sockfd, " ", 1, 0);
         send(nm_sockfd, mtime, strlen(mtime), 0);
         send(nm_sockfd, "\n", 1, 0);
-        vpath[0] = '\0'; rpath[0] = '\0'; mtime[0] = '\0';
+        for(int i = 0; i < 4097; i++) vpath[i] = 0;
+        for(int i = 0; i < 4097; i++) rpath[i] = 0;
+        for(int i = 0; i < 20; i++) mtime[i] = 0;
     }
+}
+
+void* handle_ns(void* arg) {
+    while(1) handle_client(&nm_sockfd);
 }
 
 int main(int argc, char* argv[]) {
@@ -155,7 +161,10 @@ int main(int argc, char* argv[]) {
     sprintf(port_str, "%d", PORT);
     send(nm_sockfd, port_str, sizeof(port_str) - 1, 0);
     // Send the list of accessible paths
-    send_paths(nm_sockfd); 
+    send_paths(nm_sockfd);
+
+    pthread_t nm_thread;
+    pthread_create(&nm_thread, NULL, handle_ns, (void*)&nm_sockfd);
 
     while(1) {
         struct sockaddr_in client_addr;

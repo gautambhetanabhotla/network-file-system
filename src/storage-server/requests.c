@@ -88,7 +88,7 @@ void* handle_client(void* arg) {
             ss_write(client_sockfd, vpath, contentLength, requestID, fp, remainingContentLength);
             break;
         case CREATE:
-            ss_create(client_sockfd, vpath, UNIX_START_TIME, requestID, fp, remainingContentLength);
+            ss_create(client_sockfd, vpath, UNIX_START_TIME, requestID, contentLength, fp, remainingContentLength);
             break;
         case DELETE:
             ss_delete(client_sockfd, vpath, requestID, fp, remainingContentLength);
@@ -149,7 +149,8 @@ void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, 
     contentLength -= (rcl + strlen(vpath) + 1);
     struct file* f = get_file(vpath);
     if(!f) {
-        f = ss_create(fd, vpath, UNIX_START_TIME, requestID, tbf, rcl);
+        respond(nm_sockfd, fd, E_WRONG_SS, requestID, 0);
+        return;
     }
     if(!f) {
         respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0);
@@ -174,10 +175,13 @@ void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, 
     else respond(nm_sockfd, fd, SUCCESS, requestID, 0);
 }
 
-struct file* ss_create(int fd, char* vpath, char* mtime, int requestID, char* tbf, int rcl) {
+struct file* ss_create(int fd, char* vpath, char* mtime, int requestID, int contentLength, char* tbf, int rcl) {
+    contentLength -= (strlen(vpath) + 1);
+    tbf[contentLength] = '\0';
+    mtime = tbf;
     struct file* g = NULL;
     if((g = get_file(vpath))) {
-        respond(nm_sockfd, fd, E_FILE_ALREADY_EXISTS, requestID, 0);
+        respond(nm_sockfd, -1, E_FILE_ALREADY_EXISTS, requestID, 0);
         return g;
     }
     char rpath[MAXPATHLENGTH + 1];
@@ -185,11 +189,12 @@ struct file* ss_create(int fd, char* vpath, char* mtime, int requestID, char* tb
     sprintf(rpath, "%s%llu", "storage/", n_file_entries + pp);
     FILE* p = fopen(rpath, "r");
     while(p) {
+        fclose(p);
         pp++;
         sprintf(rpath, "%s%llu", "storage/", n_file_entries + pp);
         p = fopen(rpath, "r");
     }
-    fclose(p);
+    // fclose(p);
     FILE* ff = fopen(rpath, "w");
     fclose(ff);
     struct file* f = add_file_entry(vpath, rpath, mtime, true);
@@ -202,25 +207,28 @@ void ss_delete(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     struct file* f = get_file(vpath);
     if(!f) respond(nm_sockfd, fd, E_FILE_DOESNT_EXIST, requestID, 0);
     else if(remove(f->rpath)) {
-        send(fd, "Error deleting file\n", strlen("Error deleting file\n"), 0);
+        respond(nm_sockfd, -1, E_FAULTY_SS, requestID, 0);
     }
     else {
         remove_file_entry(vpath);
-        send(fd, "File deleted\n", strlen("File deleted\n"), 0);
+        respond(nm_sockfd, -1, SUCCESS, requestID, 0);
     }
 }
 
 void ss_stream(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     struct file* f = get_file(vpath);
     if(!f) {
-        send(fd, "File not found\n", strlen("File not found\n"), 0);
+        respond(nm_sockfd, fd, E_WRONG_SS, requestID, 0);
         return;
     }
     FILE* F = fopen(f->rpath, "rb");
     if(!F) {
-        send(fd, "File not found\n", strlen("File not found\n"), 0);
+        respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0);
         return;
     }
+    fseek(F, 0, SEEK_END);
+    long file_size = ftell(F);
+    rewind(F);
     char buf[8193]; int n = 0;
     sem_wait(&f->serviceQueue);
     sem_wait(&f->lock);
@@ -228,6 +236,7 @@ void ss_stream(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     if(f->readers == 1) sem_wait(&f->writelock);
     sem_post(&f->lock);
     sem_post(&f->serviceQueue);
+    respond(-1, fd, file_size, requestID, file_size);
     while(!feof(F)) {
         n = fread(buf, 1, 8192, F);
         if(n > 0) send(fd, buf, n, 0);
@@ -272,6 +281,7 @@ void ss_info(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     // Send the file info to the client
     char buffer[1024];
     sprintf(buffer, "File size: %ld bytes\nNumber of lines: %d\nLast modified: %s\n", file_size, line_count, f->mtime);
+    respond(nm_sockfd, fd, SUCCESS, requestID, (long)strlen(buffer));
     send(fd, buffer, strlen(buffer), 0);
 
     fclose(F);

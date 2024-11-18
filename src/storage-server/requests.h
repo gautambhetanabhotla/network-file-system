@@ -22,7 +22,7 @@ int recv_full(int fd, char* buf, int contentLength);
 void* handle_client(void* arg);
 void ss_read(int fd, char* vpath, int requestID, char* tbf, int rcl);
 void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, int rcl);
-struct file* ss_create(int fd, char* vpath, char* mtime, int requestID, char* tbf, int rcl);
+struct file* ss_create(int fd, char* vpath, char* mtime, int requestID, int contentLength, char* tbf, int rcl);
 void ss_delete(int fd, char* vpath, int requestID, char* tbf, int rcl);
 void ss_stream(int fd, char* vpath, int requestID, char* tbf, int rcl);
 void ss_copy(int fd, char* vpath, char* vpath2, int requestID, char* tbf, int rcl);
