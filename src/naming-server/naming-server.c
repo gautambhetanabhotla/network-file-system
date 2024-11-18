@@ -131,7 +131,7 @@ int register_storage_server(const char *ip, int port_c, int port_ns)
     storage_servers[id].port = port_ns;
     storage_servers[id].client_port = port_c;
     storage_servers[id].file_count = 0;
-    printf("Registered Storage Server %d: %s:%d\n", id, ip, port);
+    printf("Registered Storage Server %d: %s:%d\n", id, ip, port_ns);
     return id;
 }
 
@@ -309,7 +309,7 @@ void *handle_connection(void *arg)
                 close(client_socket);
                 break;
             }
-            fprintf(stderr, "recieved message %s\n", request_type);
+            fprintf(stderr, "recieved message %d\n", request_type);
 
             // Handle REQUEST_TYPE
             if (request_type == ':') // Storage server connection
@@ -565,13 +565,26 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
                 // send header along file path to the storage server
                 int ssid = file->ss_ids[i];
                 StorageServerInfo ss_info = storage_servers[ssid];
-                int storage_server_socket = connect_to_storage_server(ss_info.ip_address, ss_info.port);
+                // connect to storage server using IP and Port in the ssinfo using connect and sockaddr
+                struct sockaddr_in storage_server_addr;
+                storage_server_addr.sin_family = AF_INET;
+                storage_server_addr.sin_port = htons(ss_info.port);
+                storage_server_addr.sin_addr.s_addr = inet_addr(ss_info.ip_address);
+                int storage_server_socket = socket(AF_INET, SOCK_STREAM, 0);
+                // connect 
                 if (storage_server_socket < 0)
                 {
                     fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
                     send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
                     return;
                 }
+                if(connect(storage_server_socket, (struct sockaddr *)&storage_server_addr, sizeof(storage_server_addr)) < 0)
+                {
+                    fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
+                    send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
+                    return;
+                }
+
                 if (write_n_bytes(storage_server_socket, header, 30) != 30 ||
                     write_n_bytes(storage_server_socket, file_path, path_length) != (ssize_t)path_length)
                 {

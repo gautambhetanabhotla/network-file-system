@@ -49,7 +49,7 @@ TrieNode* search_path(const char *path, TrieNode *root)
     }
     if (current->file_entry)
         return current->file_entry;
-    return -1; // Not found
+    return NULL; // Not found
 }
 
 void save_trie(const char *filename, TrieNode *root)
