@@ -58,13 +58,6 @@ void send_paths(int nm_sockfd) {
     if(pathsfile == NULL) pathsfile = fopen("./paths.txt", "w");
     fclose(pathsfile);
     pathsfile = fopen("./paths.txt", "r");
-    fseek(pathsfile, 0, SEEK_END);
-    long byte_count = ftell(pathsfile);
-    fseek(pathsfile, 0, SEEK_SET);
-    char CL[21]; CL[20] = '\0';
-    sprintf(CL, "%ld", byte_count);
-    fprintf(stderr, "SENDING CONTENT LENGTH %ld\n", byte_count);
-    send(nm_sockfd, CL, sizeof(CL) - 1, 0);
     while(!feof(pathsfile)) {
         int flag = 0;
         char vpath[MAXPATHLENGTH + 1], rpath[MAXPATHLENGTH + 1];
@@ -146,7 +139,13 @@ int main(int argc, char* argv[]) {
 
     // Initialise stuff with naming server
     nm_sockfd = connect_to_naming_server(argc, argv);
-    send(nm_sockfd, "STORAGESERVER", strlen("STORAGESERVER"), 0);
+    // send(nm_sockfd, "STORAGESERVER", strlen("STORAGESERVER"), 0);
+    FILE* pathsfile = fopen("./paths.txt", "r");
+    fseek(pathsfile, 0, SEEK_END);
+    long byte_count = ftell(pathsfile);
+    fseek(pathsfile, 0, SEEK_SET);
+    fprintf(stderr, "SENDING CONTENT LENGTH %ld\n", byte_count);
+    request(-1, HELLO, (long)5 + byte_count);
     // Send the port you're using to listen for clients
     char port_str[6] = {'\0'};
     sprintf(port_str, "%d", PORT);
