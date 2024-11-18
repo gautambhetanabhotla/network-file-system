@@ -161,15 +161,14 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
     {
         // Insert the path into the trie
         // choose least full servers
+        // Split the line into path and timestamp
+        char *path = strtok_r(line, " ", &saveptr2);
+        char *timestamp = strtok_r(NULL, " ", &saveptr2);
         int chosen_servers[3];
         int num_chosen = 0;
         choose_least_full_servers(chosen_servers, &num_chosen);
         insert_path(path, chosen_servers, num_chosen, root);
         // Move to the next path
-        path = strtok(NULL, "\n");
-        // Split the line into path and timestamp
-        char *path = strtok_r(line, " ", &saveptr2);
-        char *timestamp = strtok_r(NULL, " ", &saveptr2);
 
         if (path && timestamp)
         {
