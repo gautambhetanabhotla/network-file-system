@@ -14,6 +14,14 @@
 extern struct file** file_entries;
 extern unsigned long long int n_file_entries;
 
+enum request_type {
+    READ = 1, WRITE, STREAM, INFO, LIST, CREATE, COPY, DELETE
+};
+
+enum exit_status {
+    E_SUCCESS, E_FILE_DOESNT_EXIST, E_INCOMPLETE_WRITE, E_FILE_ALREADY_EXISTS, E_WRONG_SS, E_FAULTY_SS
+};
+
 extern int nm_sockfd;
 
 void ns_synchronize(int fd, char* vpath, int requestID) {

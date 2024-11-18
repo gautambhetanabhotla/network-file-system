@@ -1,6 +1,6 @@
 #include "main.h"
 
-// Global port
+//f Global port
 TrieNode *root;
 StorageServerInfo storage_servers[MAX_STORAGE_SERVERS];
 int storage_server_count = 0;
@@ -88,11 +88,9 @@ int register_storage_server(const char *ip, int port)
     return id;
 }
 
-void handle_storage_server(int client_socket, char *buffer)
+void handle_storage_server(int client_socket, char *id, int port, char *paths)
 {
-    char *token = strtok(buffer, " \n");
-    token = strtok(NULL, " \n"); // Get port
-    int port = atoi(token);
+    fprintf(stderr, "Handling storage server with ID: %s\n", id);
 
     // Get storage server IP
     struct sockaddr_in addr;
@@ -105,18 +103,25 @@ void handle_storage_server(int client_socket, char *buffer)
     int ss_id = register_storage_server(ip, port);
     pthread_mutex_unlock(&storage_server_mutex);
 
-    // Read paths
-    while ((token = strtok(NULL, " \n")) != NULL)
+    // Process the accumulated paths and insert them into the trie
+    char *path = strtok(paths, "\n");
+    while (path != NULL)
     {
-        if (strcmp(token, "STOP") == 0)
-            break;
-        printf("Received path: %s\n", token);
+        // Insert the path into the trie
+        insert_path(path, &ss_id, 1, root);
 
-        int chosen_servers[3];
-        int num_chosen;
-        choose_least_full_servers(chosen_servers, &num_chosen);
-        insert_path(token, chosen_servers, num_chosen, root);
+        // Move to the next path
+        path = strtok(NULL, "\n");
     }
+
+    // If this is the first storage server, post the semaphore
+    pthread_mutex_lock(&storage_server_mutex);
+    if (storage_server_count == 1)
+    {
+        printf("At least one storage server is connected\n");
+        sem_post(&storage_server_sem);
+    }
+    pthread_mutex_unlock(&storage_server_mutex);
 }
 
 
@@ -125,150 +130,138 @@ void *handle_connection(void *arg)
     int client_socket = *(int *)arg;
     free(arg);
 
-    char buffer[1024];
-    char accumulated_buffer[16384]; // Larger buffer to accumulate data
-    int accumulated_length = 0;
+    char request_type;
     ssize_t bytes_received;
 
-    // Receive 13 bytes to check for the "STORAGESERVER" flag
-    bytes_received = read_n_bytes(client_socket, buffer, 13);
-    if (bytes_received != 13)
+    // Read REQUEST_TYPE (1 byte)
+    bytes_received = read_n_bytes(client_socket, &request_type, 1);
+    if (bytes_received != 1)
     {
-        fprintf(stderr, "Failed to read STORAGESERVER flag\n");
+        fprintf(stderr, "Failed to read REQUEST_TYPE\n");
         close(client_socket);
         return NULL;
-    }
-    buffer[13] = '\0';
-    printf("Received: %s\n", buffer);
+    } 
 
-    // Check if the message is from a storage server
-    if (strncmp(buffer, "STORAGESERVER", 13) == 0)
+    // Handle REQUEST_TYPE
+    if (request_type == ':' || request_type == ('0' + 10)) // ':' or 'H' for HELLO
     {
-        // Add "STORAGESERVER" to the accumulated buffer
-        memcpy(accumulated_buffer + accumulated_length, buffer, 13);
-        accumulated_length += 13;
+        fprintf(stderr, "Received HELLO from storage server\n");
 
-        // Receive the port number (5 bytes)
-        char port_str[6];
-        bytes_received = read_n_bytes(client_socket, port_str, 5);
-        if (bytes_received != 5)
+        char id[10];
+        char content_length[21];
+
+        // Read ID (9 bytes)
+        bytes_received = read_n_bytes(client_socket, id, 9);
+        fprintf(stderr, "ID: %s\n", id);
+        if (bytes_received != 9)
         {
-            fprintf(stderr, "Failed to read port number\n");
+            fprintf(stderr, "Failed to read ID\n");
             close(client_socket);
             return NULL;
         }
-        port_str[5] = '\0';
-        printf("Port: %s\n", port_str);
-        // Add the port number to the accumulated buffer
-        memcpy(accumulated_buffer + accumulated_length, port_str, 5);
-        accumulated_length += 5;
+        id[9] = '\0';
 
-        // Receive the content length (20 bytes)
-        char content_length_str[21];
-        bytes_received = read_n_bytes(client_socket, content_length_str, 20);
+        // Read CONTENT_LENGTH (20 bytes)
+        bytes_received = read_n_bytes(client_socket, content_length, 20);
+        fprintf(stderr, "CONTENT_LENGTH: %s\n", content_length);
         if (bytes_received != 20)
         {
             fprintf(stderr, "Failed to read content length\n");
             close(client_socket);
             return NULL;
         }
-        content_length_str[20] = '\0';
-        int content_length = atoi(content_length_str);
-        printf("Content length: %d\n", content_length);
+        content_length[20] = '\0';
+        int content_len = atoi(content_length);
+        fprintf(stderr, "Content Length: %d\n", content_len);
 
-        // Add the content length to the accumulated buffer
-        memcpy(accumulated_buffer + accumulated_length, content_length_str, 20);
-        accumulated_length += 20;
-
-        // Receive the specified amount of data based on the content length
-        int total_bytes_read = 0;
-        int token_counter = 0;
-        while (total_bytes_read < content_length)
+        // Allocate buffer for data
+        char* data_buffer = malloc(content_len + 1);
+        if (data_buffer == NULL)
         {
-            ssize_t chunk_size = (content_length - total_bytes_read) > (sizeof(buffer) - 1) ? (sizeof(buffer) - 1) : (content_length - total_bytes_read);
-            bytes_received = recv(client_socket, buffer, chunk_size, 0);
-            if (bytes_received < 0)
+            fprintf(stderr, "Failed to allocate memory for data buffer\n");
+            close(client_socket);
+            return NULL;
+        }
+
+        // Read DATA (CONTENT_LENGTH bytes) in a loop
+        size_t total_bytes_read = 0;
+        while (total_bytes_read < content_len)
+        {
+            bytes_received = recv(client_socket, data_buffer + total_bytes_read, content_len - total_bytes_read, 0);
+            if (bytes_received <= 0)
             {
-                perror("recv");
+                fprintf(stderr, "Failed to read data\n");
+                free(data_buffer);
                 close(client_socket);
                 return NULL;
             }
-            else if (bytes_received == 0)
-            {
-                fprintf(stderr, "Connection closed by peer during data reception\n");
-                close(client_socket);
-                return NULL;
-            }
-
-            buffer[bytes_received] = '\0';
-            fprintf(stderr, "Received: %s\n", buffer);
-            // Split the buffer into tokens based on spaces and newlines
-            char *token = strtok(buffer, " \n");
-            while (token != NULL)
-            {
-                // Skip blank tokens
-                if (strlen(token) == 0)
-                {
-                    token = strtok(NULL, " \n");
-                    continue;
-                }
-                // Skip every second token
-                if (token_counter % 2 == 0)
-                {
-                    // Accumulate data in the buffer
-                    if (accumulated_length + strlen(token) < sizeof(accumulated_buffer) - 1)
-                    {
-                        memcpy(accumulated_buffer + accumulated_length, token, strlen(token));
-                        accumulated_length += strlen(token);
-                        accumulated_buffer[accumulated_length] = ' '; // Add space character
-                        accumulated_length++;
-                    }
-                    else
-                    {
-                        fprintf(stderr, "Accumulated buffer overflow\n");
-                        close(client_socket);
-                        return NULL;
-                    }
-                }
-                token_counter++;
-                token = strtok(NULL, " \n");
-            }
-
+            fprintf(stderr, "Received %ld bytes\n", bytes_received);
+            fprintf(stderr, "Data: %s\n", data_buffer);
             total_bytes_read += bytes_received;
         }
+        data_buffer[content_len] = '\0'; // Null-terminate the data
 
-        // Add null terminator at the end of the accumulated buffer
-        if (accumulated_length < sizeof(accumulated_buffer))
+        // Process the DATA
+        // First 5 bytes are the port number
+        char port_str[6];
+        memcpy(port_str, data_buffer, 5);
+        port_str[5] = '\0'; // Null-terminate the port string
+        int port = atoi(port_str);
+        fprintf(stderr, "Port: %d\n", port);
+
+        // Remaining data contains strings (paths)
+        char* remaining_data = data_buffer + 5;
+        size_t remaining_length = content_len - 5;
+
+        // Accumulate the required strings (skip every second string)
+        char accumulated_paths[16384]; // Adjust size as needed
+        size_t accumulated_length = 0;
+        int token_counter = 0;
+
+        char* token = strtok(remaining_data, " \n");
+        while (token != NULL)
         {
-            accumulated_buffer[accumulated_length] = '\0';
+            if (token_counter % 2 == 0)
+            {
+                size_t token_length = strlen(token);
+                // Ensure we don't exceed the buffer size
+                if (accumulated_length + token_length + 1 < sizeof(accumulated_paths))
+                {
+                    memcpy(accumulated_paths + accumulated_length, token, token_length);
+                    accumulated_length += token_length;
+                    accumulated_paths[accumulated_length] = '\n'; // Separate paths with a newline
+                    accumulated_length++;
+                }
+                else
+                {
+                    fprintf(stderr, "Accumulated paths buffer overflow\n");
+                    free(data_buffer);
+                    close(client_socket);
+                    return NULL;
+                }
+            }
+            token_counter++;
+            token = strtok(NULL, " \n");
         }
-        else
-        {
-            accumulated_buffer[sizeof(accumulated_buffer) - 1] = '\0';
-        }
+        accumulated_paths[accumulated_length] = '\0'; // Null-terminate the accumulated paths
 
-        // Debug print of the accumulated buffer
-        fprintf(stderr, "Accumulated buffer: %s\n", accumulated_buffer);
+        // Call handle_storage_server with the port number and accumulated paths
+        handle_storage_server(client_socket, id, port, accumulated_paths);
 
-        // Call handle_storage_server with the accumulated data
-        handle_storage_server(client_socket, accumulated_buffer);
+        free(data_buffer);
 
-        // If this is the first storage server, post the semaphore
-        pthread_mutex_lock(&storage_server_mutex);
-        if (storage_server_count == 1)
-        {
-            printf("At least one storage server is connected\n");
-            sem_post(&storage_server_sem);
-        }
-        pthread_mutex_unlock(&storage_server_mutex);
+        // Continue to listen to the storage server if needed
+        // This can be implemented here if you have more communication
+
+        close(client_socket);
     }
     else
     {
-        // Handle client connections...
-        handle_client(client_socket, buffer);
+        // Handle client connections
+        handle_client(client_socket, &request_type);
+        close(client_socket);
     }
 
-    close(client_socket);
     return NULL;
 }
 
@@ -353,10 +346,10 @@ void handle_client(int client_socket, char *initial_buffer)
 
                 char response[256];
                 snprintf(response, sizeof(response), "%s\n%d\n",
-                         storage_servers[ss_id].ip_address,
-                         storage_servers[ss_id].port);
-                if (strcmp(command, "WRITE") == 0)
-                {
+
+                            storage_servers[ss_id].ip_address,
+                            storage_servers[ss_id].port);
+                if(strcmp(command, "WRITE")==0){
                     time_t now = time(NULL);
                     struct tm *tm_info = gmtime(&now);  // Use localtime(&now) for local time
 
@@ -531,5 +524,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
 
