@@ -277,8 +277,8 @@ void handle_client(int client_socket, char *initial_buffer) {
                 int ss_id = entry->ss_ids[0];
                 char response[256];
                 snprintf(response, sizeof(response), "%s\n%d\n",
-                         storage_servers[ss_id].ip_address,
-                         storage_servers[ss_id].port);
+                            storage_servers[ss_id].ip_address,
+                            storage_servers[ss_id].port);
                 if(strcmp(command, "WRITE")==0){
                     time_t now = time(NULL);
                     struct tm *tm_info = gmtime(&now);  // Use localtime(&now) for local time
