@@ -1451,13 +1451,13 @@ void handle_client(int client_socket, char initial_request_type)
     else if (request_type == '7')
     {
         fprintf(stderr, "Received COPY request from client\n");
-        //handle_copy_request(client_socket, client_req_id, content, content_length);
+        handle_copy_request(client_socket, client_req_id, content, content_length);
 
     }
     else if(request_type == '8')
     {
         fprintf(stderr, "Received DELETE request from client\n");
-        //handle_delete_request(client_socket, client_req_id, content, content_length);
+        handle_delete_request(client_socket, client_req_id, content, content_length);
     }
     else
     {
