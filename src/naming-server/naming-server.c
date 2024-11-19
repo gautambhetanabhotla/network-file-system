@@ -229,7 +229,6 @@ void handle_sync_request(int client_socket, int client_req_id, char *content, lo
 
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length)
 {
-
     // Parse content into folderpath and name
     char *folderpath = (char *)malloc(content_length + 1);
     char *name = (char *)malloc(content_length + 1);
@@ -319,9 +318,11 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             snprintf(req_id_str, sizeof(req_id_str), "%09d", global_req_id);
             fprintf(stderr, "req_id_str: %s\n", req_id_str);
 
+
+
             header[0] = operation_type;
             strncpy(&header[1], req_id_str, strlen(req_id_str));
-            //
+            // 
             strncpy(&header[10], content_length_str, strlen(content_length_str));
             header[30] = '\n';
             // send request to the 3 least filled storage servers of the file entry
@@ -361,8 +362,9 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
                     return;
                 }
                 fprintf(stderr, "header %s\n", header);
-                if (write_n_bytes(storage_server_socket, header, 30) != 30)
-                {
+
+                if (write_n_bytes(storage_server_socket, header, 30) != 30){
+        
 
                     fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
                     send_error_response(client_socket, client_req_id, "Failed to send request to storage server\n");
@@ -387,6 +389,39 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
     // char *content_copy = strdup(content);
 }
 
+int copy_file(char * srcpath, int src_socket, char * destfolder, char * dest_ip, int dest_port, int reqid){
+    char header[31] = {0};
+    char * filename = (char *) strrchr(srcpath, '/');
+    if (filename[strlen(filename)  - 1] == '\n'){
+        filename[strlen(filename) - 1] = '\0';
+    }
+    char * destpath = malloc(strlen(destfolder) + strlen(filename) + 1);
+    snprintf(destpath, strlen(destfolder) + strlen(filename), "%s%s", destfolder, filename);
+    destpath[strlen(destfolder) + strlen(filename)] = '\0';
+    char * content = (char *) malloc (strlen(srcpath) + 1 + strlen(destpath) + 1 + strlen(dest_ip) + 1 + 10 + 1 + 1);
+    sprintf(content, "%s\n%s\n%s\n%d\n", srcpath, destpath, dest_ip, dest_port);
+    content[strlen(content) + 1] = '\0';
+    header[0] = '7'; // copy
+    snprintf(&header[1], 9, "%d", reqid);
+    snprintf(&header[10], 20, "%d", strlen(content));
+
+    if (write_n_bytes(src_socket, header, 30) != 30 || write_n_bytes(src_socket, content, strlen(content)) != strlen(content)){
+        close(src_socket);
+        return -1;
+    }
+    int bytes_read = read_n_bytes(src_socket, header, 30);
+    if (bytes_read != 30){
+        close(src_socket);
+        return -1;
+    }
+    if(header[0] == '0'){
+        close(src_socket);
+        return 0;
+    }
+    close(src_socket);
+    return -1;
+}
+
 
 
 void handle_delete_request(int client_socket, int client_req_id, char *content, long content_length){
@@ -397,7 +432,57 @@ void handle_delete_request(int client_socket, int client_req_id, char *content, 
     // delete '/' (home) should not be allowed
     // also after deleting from all the storage servers, delete the entry from the trie
 }
+int send_success(int client_socket, int client_req_id, char *message){
+    char header[31];
+    char req_id_str[10];
+    snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
 
+    char content_length_str[21];
+    size_t content_length = strlen(message);
+    snprintf(content_length_str, sizeof(content_length_str), "%020ld", content_length);
+
+    header[0] = '0'; // Assuming '0' indicates a success acknowledgment
+    strncpy(&header[1], req_id_str, 9);
+    strncpy(&header[10], content_length_str, 20);
+    header[30] = '\0';
+
+    // Send header and content
+    if(write_n_bytes(client_socket, header, 30) != 30 || write_n_bytes(client_socket, message, content_length) != (ssize_t)content_length){
+        return -1;
+    }
+    return 0;
+}
+// Function to connect to a storage server
+int connect_to_storage_server(const char *ip_address, int port)
+{
+    int ss_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (ss_socket < 0)
+    {
+        perror("Failed to create socket");
+        return -1;
+    }
+
+    struct sockaddr_in ss_addr;
+    memset(&ss_addr, 0, sizeof(ss_addr));
+    ss_addr.sin_family = AF_INET;
+    ss_addr.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, ip_address, &ss_addr.sin_addr) <= 0)
+    {
+        perror("Invalid IP address");
+        close(ss_socket);
+        return -1;
+    }
+
+    if (connect(ss_socket, (struct sockaddr *)&ss_addr, sizeof(ss_addr)) < 0)
+    {
+        perror("Failed to connect to storage server");
+        close(ss_socket);
+        return -1;
+    }
+
+    return ss_socket;
+}
 void handle_copy_request(int client_socket, int client_req_id, char *content, long content_length){
     
     char * folderpath, * srcpath, * saveptr;
@@ -425,8 +510,6 @@ void handle_copy_request(int client_socket, int client_req_id, char *content, lo
     else{
         // copy file
         // copy_file(srcpath, folderpath);
-        char header[31];
-        memset(header, '\0', sizeof(header));
 
         StorageServerInfo source_info[3];
         int ss_id[3];
@@ -439,17 +522,28 @@ void handle_copy_request(int client_socket, int client_req_id, char *content, lo
             return;
         }
         int num_successful = 0;
+
+        int ss_socket;
+
         for(int i = 0; i<num_chosen; i++){
             //connect to storage server with id src_file->ss_ids[j]
 
-            int ss_socket = connect_to_storage_server(src_file->ss_ids[j]); // WRITE CODE FOR THIS
+
 
             for(int j = 0; j<3; j++){
                 if (src_file->ss_ids[j] <= 0){
                     continue;                    
                 }
-                memset(header, '\0', sizeof(header));
-                header[0] = '7';
+                ss_socket = connect_to_storage_server(storage_servers[src_file->ss_ids[j]].ip_address,storage_servers[src_file->ss_ids[j]].port); // WRITE CODE FOR THIS
+                if (ss_socket < 0){
+                    continue;
+                }
+                
+                if (copy_file(srcpath, ss_socket, folderpath, storage_servers[ss_id[i]].ip_address, storage_servers[ss_id[i]].port, client_req_id)<0){
+                    // failed to copy
+                    continue;
+                }
+
 
                 // now, we need to send from src_file->ss_ids[j] to ss_id[i]  // I am telling src_file->ss_ids[j] to copy src_file into ss_id[i] with destfilepath
                 // send to src_file->ss_ids[j]: (content)
@@ -457,29 +551,50 @@ void handle_copy_request(int client_socket, int client_req_id, char *content, lo
                 // dest_path (folderpath/filename)
                 // ssip ss_id[i]
                 // port ss_id[i]
-                if (failed)
-                    continue;
-                else
-                    num_successful++;
-                    break;
+
+                num_successful++;
+                break;
+
             }
 
             close(ss_socket);
         }
         if (num_successful == num_chosen){
-            return success;
+
+          
+            char * filename = (char *) strrchr(srcpath, '/');
+            if (filename[strlen(filename)  - 1] == '\n'){
+                filename[strlen(filename) - 1] = '\0';
+            }
+            char * destpath = malloc(strlen(folderpath) + strlen(filename) + 1);
+            snprintf(destpath, strlen(folderpath) + strlen(filename), "%s%s", folderpath, filename);
+            destpath[strlen(folderpath) + strlen(filename)] = '\0';
+            insert_path(destpath, ss_id, num_chosen, root);
+            fprintf(stderr, "File copied successfully\n");
+            if (send_success(client_socket, client_req_id, "File copied successfully\n")<0){
+                fprintf(stderr, "Failed to send success message to client\n");
+                return;
+            }
+            return;
+
         }
         else{
-            return failure;
+            return send_error_response(client_socket, client_req_id, "Error: Failed to copy file to storage server\n");
         }
 
 
     }
+
+
     // check for last character being "\n"
     // check if it is a valid path
     // check if it is a file, if it is then send copy request to the three (or how many ever) storage servers along with the ssip and port number for the ss to copy it from, along with last modified time
     // if it is a folder, find all the files under it in the trie, then send copy request for each of the files. for each of them insert an entry in the trie, once it is successfully copied to all three backup storage servers
 }
+
+
+
+
 
 void handle_info_request(int client_socket, int client_req_id, char *content, long content_length)
 {
@@ -506,8 +621,10 @@ void handle_info_request(int client_socket, int client_req_id, char *content, lo
     for (int i = 0; i < 3; i++)
     {
         int ssid = file->ss_ids[i];
-        if (ssid < 0)
+      
+        if (ssid<0)
             continue;
+      
         StorageServerInfo ss_info = storage_servers[ssid];
 
         // Prepare header for storage server
@@ -1266,6 +1383,7 @@ void handle_client(int client_socket, char initial_request_type)
 
     pthread_mutex_lock(&global_req_id_mutex);
     int storage_req_id = global_req_id++;
+
     request_array[storage_req_id].req_id = request_type;
     request_array[storage_req_id].client_socket = client_socket;
     FILE *fd = fopen("requests.txt", "a");
@@ -1277,16 +1395,22 @@ void handle_client(int client_socket, char initial_request_type)
         return;
     }
 
-        pthread_mutex_lock(&global_req_id_mutex);
-        int storage_req_id = global_req_id++;
-        FILE *fd = fopen("requests.txt", "a");
-        if (fd == NULL)
-        {
-            perror("Error opening requests.txt");
-            free(content);
-            pthread_mutex_unlock(&global_req_id_mutex);
-            return;
-        }
+// <<<<<<< bhavya
+//     char file_write_buffer[256];
+//     int len = snprintf(file_write_buffer, sizeof(file_write_buffer), "%d request: id: %c req_id: %s content_length %s\n", storage_req_id, header[0], id_str, content_length_str);
+//     fwrite(file_write_buffer, 1, len, fd);
+// =======
+//         pthread_mutex_lock(&global_req_id_mutex);
+//         int storage_req_id = global_req_id++;
+//         FILE *fd = fopen("requests.txt", "a");
+//         if (fd == NULL)
+//         {
+//             perror("Error opening requests.txt");
+//             free(content);
+//             pthread_mutex_unlock(&global_req_id_mutex);
+//             return;
+//         }
+// >>>>>>> main
 
         char file_write_buffer[256];
         int len = snprintf(file_write_buffer, sizeof(file_write_buffer), "%d request: id: %c req_id: %s content_length %s\n", storage_req_id, header[0], id_str, content_length_str);
@@ -1399,6 +1523,7 @@ int main(int argc, char *argv[])
     root->file_entry = (FileEntry *)malloc(sizeof(FileEntry));
     root->file_entry->is_folder = 1;
     strcpy(root->file_entry->filename, "/");
+
 
     // Initialize Cache
     cache = init_cache(CACHE_SIZE);
