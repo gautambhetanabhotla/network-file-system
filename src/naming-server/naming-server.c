@@ -9,7 +9,7 @@ sem_t storage_server_sem;             // Semaphore to track storage servers
 pthread_mutex_t storage_server_mutex; // Mutex to protect storage_server_count
 int round_robin_counter = 0;
 pthread_mutex_t global_req_id_mutex; // Mutex to protect global request ID
-int global_req_id = 1;
+int global_req_id = 2;
 pthread_mutex_t trie_mutex; // Mutex to protect trie operations
 
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length);
@@ -17,6 +17,8 @@ int delete_file(const char *path, FileEntry *entry);
 int send_success(int client_socket, int client_req_id, char *message);
 void list_paths(TrieNode *node, const char *base_path, char **output, size_t *output_length);
 int connect_to_storage_server(const char *ip_address, int port);
+
+clientData request_array[MAX_CLIENTS];
 
 TrieNode *search_trie_node(const char *path, TrieNode *root)
 {
@@ -466,7 +468,7 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             // generate new content length that is length of filepath + new line + timestamp size  using strnc
 
             // set global request id to req_id_str use strncpy, convert global_req_id to string
-            snprintf(req_id_str, sizeof(req_id_str), "%09d", global_req_id);
+            snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
             fprintf(stderr, "req_id_str: %s\n", req_id_str);
 
             header[0] = operation_type;
@@ -1344,6 +1346,7 @@ void *handle_connection(void *arg)
             request_type = header[0];
             strncpy(req_id_str, &header[1], 9);
             req_id_str[9] = '\0';
+            int requestID = atoi(req_id_str);
             strncpy(content_length_str, &header[10], 20);
             content_length_str[20] = '\0';
             int content_length = atoi(content_length_str);
@@ -1370,6 +1373,8 @@ void *handle_connection(void *arg)
             }
             content[content_length] = '\0';
             fprintf(stderr, "content: %s\n", content);
+
+            send(request_array[requestID].client_socket, header, 30, 0);
         }
     }
     else
@@ -1459,11 +1464,12 @@ void handle_client(int client_socket, char initial_request_type)
         char file_write_buffer[256];
         int len = snprintf(file_write_buffer, sizeof(file_write_buffer), "%d request: id: %c req_id: %s content_length %s\n", storage_req_id, header[0], id_str, content_length_str);
         fwrite(file_write_buffer, 1, len, fd);
-
         fclose(fd);
         pthread_mutex_unlock(&global_req_id_mutex);
 
         client_req_id = storage_req_id;
+        request_array[client_req_id].client_socket = client_socket;
+      
         char* saveptr;
         content = strtok_r(content, "\n", &saveptr);
         fprintf(stderr, "tokenised content: %s\n", content);
