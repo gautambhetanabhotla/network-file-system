@@ -11,11 +11,10 @@ int round_robin_counter = 0;
 pthread_mutex_t global_req_id_mutex; // Mutex to protect global request ID
 int global_req_id = 1;
 pthread_mutex_t trie_mutex; // Mutex to protect trie operations
-
+clientData request_array[MAX_CLIENTS];
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length);
 
 // function to look for a path in the cache and then in the trie
-
 
 // Helper function to write n bytes to a socket
 ssize_t write_n_bytes(int socket_fd, const void *buffer, size_t n)
@@ -65,8 +64,12 @@ ssize_t read_n_bytes(int socket_fd, void *buffer, size_t n)
 {
     size_t total_read = 0;
     char *buf = (char *)buffer;
+    time_t start_time = time(NULL);
+    int timeout_seconds = 5;
+
     while (total_read < n)
     {
+        fprintf(stderr, "total_read: %ld, n: %ld\n", total_read, n);
         ssize_t bytes_read = recv(socket_fd, buf + total_read, n - total_read, 0);
         if (bytes_read < 0)
         {
@@ -79,7 +82,18 @@ ssize_t read_n_bytes(int socket_fd, void *buffer, size_t n)
             fprintf(stderr, "Connection closed by peer\n");
             return -1;
         }
-        total_read += bytes_read;
+        else
+        {
+            total_read += bytes_read;
+            start_time = time(NULL); // Reset timer on successful read
+        }
+
+        // Check for timeout
+        if (difftime(time(NULL), start_time) > timeout_seconds)
+        {
+            fprintf(stderr, "Timeout while reading from socket\n");
+            return -1;
+        }
     }
     return total_read;
 }
@@ -134,15 +148,15 @@ void handle_rs_request(int client_socket, int client_req_id, char *content, long
     if (path_buffer == NULL)
     {
         fprintf(stderr, "Failed to allocate memory for data buffer\n");
-        close(client_socket);
+        // close(client_socket);
         return;
     }
     int total_read = 0;
     fprintf(stderr, "content_length: %ld\n", content_length);
     fprintf(stderr, "content: %s\n", content);
 
-    FileEntry* file = search_path(content, root);
-    if (file== NULL)
+    FileEntry *file = search_path(content, root);
+    if (file == NULL)
     {
         fprintf(stderr, "path not found\n");
         send_error_response(client_socket, client_req_id, "path not found\n");
@@ -175,7 +189,7 @@ void handle_rs_request(int client_socket, int client_req_id, char *content, long
             write_n_bytes(client_socket, response_content, response_content_length) != (ssize_t)response_content_length)
         {
             fprintf(stderr, "Failed to send response to client\n");
-            close(client_socket);
+            // close(client_socket);
             free(path_buffer);
             return;
         }
@@ -184,6 +198,33 @@ void handle_rs_request(int client_socket, int client_req_id, char *content, long
 
     free(path_buffer);
     fprintf(stderr, "Handled rws request %d %s %ld %c\n", client_req_id, content, content_length, request_type);
+}
+
+void handle_sync_request(int client_socket, int client_req_id, char *content, long content_length)
+{
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    getpeername(client_socket, (struct sockaddr *)&client_addr, &client_len);
+
+    char client_ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(client_addr.sin_addr), client_ip, INET_ADDRSTRLEN);
+    fprintf(stderr, "Client IP address: %s\n", client_ip);
+
+    // Create a socket
+    int sockfd;
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    {
+        perror("socket");
+        return;
+    }
+    // Connect to the server
+    if (connect(sockfd, (struct sockaddr *)&client_addr, sizeof(client_addr)) == -1)
+    {
+        perror("connect");
+        exit(1);
+    }
+
+    fprintf(stderr, "Handled sync request %d %s %ld\n", client_req_id, content, content_length);
 }
 
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length)
@@ -204,7 +245,7 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
         send_error_response(client_socket, client_req_id, "Error: Folder does not exist\n");
         return;
     }
-    else if(file->is_folder == 0)
+    else if (file->is_folder == 0)
     {
         fprintf(stderr, "Path is not a folder\n");
         send_error_response(client_socket, client_req_id, "Error: Path is not a folder\n");
@@ -228,12 +269,12 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             char timestamp[20];
             strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%S", &tm);
             fprintf(stderr, "timestamp: %s\n", timestamp);
-            
+
             char file_path[4096];
 
             size_t folderpath_len = strlen(exist_folder);
             size_t name_len = strlen(to_create);
-            if(folderpath_len + name_len + 1 >= sizeof(file_path))
+            if (folderpath_len + name_len + 1 >= sizeof(file_path))
             {
                 fprintf(stderr, "Path too long\n");
                 send_error_response(client_socket, client_req_id, "Error: Path too long\n");
@@ -244,7 +285,7 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             fprintf(stderr, "file_path: %s\n", file_path);
             size_t content_length = strlen(file_path) + 1 + strlen(timestamp);
 
-            char* content = malloc(content_length + 1);
+            char *content = malloc(content_length + 1);
             if (content == NULL)
             {
                 fprintf(stderr, "Failed to allocate memory for content\n");
@@ -258,7 +299,6 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             strncpy(content + strlen(content), timestamp, strlen(timestamp));
             content[content_length] = '\n';
             fprintf(stderr, "content: %s\n", content);
-        
 
             char header[31]; // 30 bytes + null terminator
             char req_id_str[10];
@@ -270,13 +310,14 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             snprintf(content_length_str, sizeof(content_length_str), "%ld", content_length);
             fprintf(stderr, "content_length_str: %s\n", content_length_str);
 
-            char operation_type = '6';               // '6' for CREATE
+            char operation_type = '6'; // '6' for CREATE
             // send 30 bytes header: 1 byte operation type, 9 bytes request id, 20 bytes content length
             // generate new content length that is length of filepath + new line + timestamp size  using strnc
 
             // set global request id to req_id_str use strncpy, convert global_req_id to string
             snprintf(req_id_str, sizeof(req_id_str), "%09d", global_req_id);
             fprintf(stderr, "req_id_str: %s\n", req_id_str);
+
 
 
             header[0] = operation_type;
@@ -289,13 +330,13 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             int num_chosen = 0;
             choose_least_full_servers(chosen_servers, &num_chosen);
 
-            if(num_chosen==0)
+            if (num_chosen == 0)
             {
                 send_error_response(client_socket, client_req_id, "No storage servers available\n");
                 return;
             }
 
-            for(int i=0; i<num_chosen;i++)// what if there are less than 3 ???
+            for (int i = 0; i < num_chosen; i++) // what if there are less than 3 ???
             {
                 // send request to storage server
                 // send header along file path to the storage server
@@ -307,36 +348,37 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
                 storage_server_addr.sin_port = htons(ss_info.client_port);
                 storage_server_addr.sin_addr.s_addr = inet_addr(ss_info.ip_address);
                 int storage_server_socket = socket(AF_INET, SOCK_STREAM, 0);
-                // connect 
+                // connect
                 if (storage_server_socket < 0)
                 {
                     fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
                     send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
                     return;
                 }
-                if(connect(storage_server_socket, (struct sockaddr *)&storage_server_addr, sizeof(storage_server_addr)) < 0)
+                if (connect(storage_server_socket, (struct sockaddr *)&storage_server_addr, sizeof(storage_server_addr)) < 0)
                 {
                     fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
                     send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
                     return;
                 }
                 fprintf(stderr, "header %s\n", header);
+
                 if (write_n_bytes(storage_server_socket, header, 30) != 30){
         
+
                     fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
                     send_error_response(client_socket, client_req_id, "Failed to send request to storage server\n");
-                    close(storage_server_socket);
+                    // close(storage_server_socket);
                     return;
                 }
 
-                if(write_n_bytes(storage_server_socket, content, content_length) != (ssize_t)content_length)
+                if (write_n_bytes(storage_server_socket, content, content_length) != (ssize_t)content_length)
                 {
                     fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
                     send_error_response(client_socket, client_req_id, "Failed to send request to storage server\n");
                 }
-                
 
-                close(storage_server_socket);
+                // close(storage_server_socket);
             }
         }
     }
@@ -379,6 +421,7 @@ int copy_file(char * srcpath, int src_socket, char * destfolder, char * dest_ip,
     close(src_socket);
     return -1;
 }
+
 
 
 void handle_delete_request(int client_socket, int client_req_id, char *content, long content_length){
@@ -467,6 +510,7 @@ void handle_copy_request(int client_socket, int client_req_id, char *content, lo
     else{
         // copy file
         // copy_file(srcpath, folderpath);
+
         StorageServerInfo source_info[3];
         int ss_id[3];
         int num_chosen;
@@ -485,6 +529,7 @@ void handle_copy_request(int client_socket, int client_req_id, char *content, lo
             //connect to storage server with id src_file->ss_ids[j]
 
 
+
             for(int j = 0; j<3; j++){
                 if (src_file->ss_ids[j] <= 0){
                     continue;                    
@@ -499,6 +544,7 @@ void handle_copy_request(int client_socket, int client_req_id, char *content, lo
                     continue;
                 }
 
+
                 // now, we need to send from src_file->ss_ids[j] to ss_id[i]  // I am telling src_file->ss_ids[j] to copy src_file into ss_id[i] with destfilepath
                 // send to src_file->ss_ids[j]: (content)
                 // src_path
@@ -508,11 +554,14 @@ void handle_copy_request(int client_socket, int client_req_id, char *content, lo
 
                 num_successful++;
                 break;
+
             }
 
             close(ss_socket);
         }
         if (num_successful == num_chosen){
+
+          
             char * filename = (char *) strrchr(srcpath, '/');
             if (filename[strlen(filename)  - 1] == '\n'){
                 filename[strlen(filename) - 1] = '\0';
@@ -536,6 +585,7 @@ void handle_copy_request(int client_socket, int client_req_id, char *content, lo
 
     }
 
+
     // check for last character being "\n"
     // check if it is a valid path
     // check if it is a file, if it is then send copy request to the three (or how many ever) storage servers along with the ssip and port number for the ss to copy it from, along with last modified time
@@ -551,7 +601,7 @@ void handle_info_request(int client_socket, int client_req_id, char *content, lo
     fprintf(stderr, "Handling INFO request for path: %s\n", content);
 
     // Check if the path ends with '/'
-    if (content[content_length - 1] == '/' || (content[content_length - 1] == '\n' && content[content_length-2] == '/'))
+    if (content[content_length - 1] == '/' || (content[content_length - 1] == '\n' && content[content_length - 2] == '/'))
     {
         fprintf(stderr, "Path is a directory, cannot get info\n");
         send_error_response(client_socket, client_req_id, "Error: Cannot get info of a directory\n");
@@ -568,10 +618,13 @@ void handle_info_request(int client_socket, int client_req_id, char *content, lo
     }
 
     // Get storage server info (use the first available server)
-    for (int i = 0; i<3; i++){
+    for (int i = 0; i < 3; i++)
+    {
         int ssid = file->ss_ids[i];
+      
         if (ssid<0)
             continue;
+      
         StorageServerInfo ss_info = storage_servers[ssid];
 
         // Prepare header for storage server
@@ -580,8 +633,8 @@ void handle_info_request(int client_socket, int client_req_id, char *content, lo
         char content_length_str[21] = {0};
         memset(header, 0, sizeof(header));
 
-        char operation_type = '4';               // '4' for INFO request
-        int path_length = strlen(content);   // not including null terminator
+        char operation_type = '4';         // '4' for INFO request
+        int path_length = strlen(content); // not including null terminator
 
         // Format request ID and content length
         snprintf(req_id_str, sizeof(req_id_str), "%d", client_req_id);
@@ -611,7 +664,7 @@ void handle_info_request(int client_socket, int client_req_id, char *content, lo
         {
             fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
             // send_error_response(client_socket, client_req_id, "Error: Failed to connect to storage server\n");
-            close(storage_server_socket);
+            // close(storage_server_socket);
             continue;
             // return;
         }
@@ -622,7 +675,7 @@ void handle_info_request(int client_socket, int client_req_id, char *content, lo
         {
             fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
             // send_error_response(client_socket, client_req_id, "Error: Failed to send request to storage server\n");
-            close(storage_server_socket);
+            // close(storage_server_socket);
             // return;
             continue;
         }
@@ -634,7 +687,7 @@ void handle_info_request(int client_socket, int client_req_id, char *content, lo
         {
             fprintf(stderr, "Failed to read response header from storage server %d\n", ssid);
             // send_error_response(client_socket, client_req_id, "Error: Failed to receive response from storage server\n");
-            close(storage_server_socket);
+            // close(storage_server_socket);
             // return;
             continue;
         }
@@ -656,7 +709,7 @@ void handle_info_request(int client_socket, int client_req_id, char *content, lo
         {
             fprintf(stderr, "Failed to allocate memory for storage server content\n");
             // send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
-            close(storage_server_socket);
+            // close(storage_server_socket);
             // return;
             continue;
         }
@@ -667,14 +720,14 @@ void handle_info_request(int client_socket, int client_req_id, char *content, lo
             fprintf(stderr, "Failed to read content from storage server\n");
             // send_error_response(client_socket, client_req_id, "Error: Failed to receive complete response from storage server\n");
             free(ss_content);
-            close(storage_server_socket);
+            // close(storage_server_socket);
             // return;
             continue;
         }
         // ss_content[ss_content_length] = '\0';
 
         // Close connection to storage server
-        close(storage_server_socket);
+        // close(storage_server_socket);
 
         // Adjust the request ID in the response header to match the client's request ID
         // strncpy(&response_header[1], req_id_str, 9);
@@ -849,8 +902,8 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
     pthread_mutex_unlock(&storage_server_mutex);
 
     // Process the accumulated paths and insert them into the trie
-    char* saveptr1;
-    char* saveptr2;
+    char *saveptr1;
+    char *saveptr2;
     char *line = strtok_r(paths, "\n", &saveptr1);
     while (line != NULL)
     {
@@ -868,7 +921,7 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
         if (path && timestamp)
         {
             // Insert the path into the trie
-            FileEntry* file = insert_path(path, &ss_id, 1, root);
+            FileEntry *file = insert_path(path, &ss_id, 1, root);
 
             // Set the timestamp for the file entry
             // Assuming you have a function to set the timestamp
@@ -890,7 +943,7 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
     pthread_mutex_unlock(&storage_server_mutex);
 }
 
-void * handle_connection(void *arg)
+void *handle_connection(void *arg)
 {
     int client_socket = *(int *)arg;
     free(arg);
@@ -899,7 +952,7 @@ void * handle_connection(void *arg)
     // timeout.tv_sec = 5;
     // timeout.tv_usec = 0;
 
-    //setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+    // setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
     char request_type;
     ssize_t bytes_received;
 
@@ -908,7 +961,7 @@ void * handle_connection(void *arg)
     if (bytes_received != 1)
     {
         fprintf(stderr, "Failed to read REQUEST_TYPE\n");
-        close(client_socket);
+        // close(client_socket);
         return NULL;
     }
 
@@ -928,62 +981,66 @@ void * handle_connection(void *arg)
         if (bytes_received != 9)
         {
             fprintf(stderr, "Failed to read ID\n");
-            close(client_socket);
+            // close(client_socket);
             return NULL;
         }
         id[9] = '\0';
+        fprintf(stderr, "ID = %d\n", atoi(id));
 
         // Read CONTENT_LENGTH (20 bytes)
         bytes_received = read_n_bytes(client_socket, content_length, 20);
         if (bytes_received != 20)
         {
             fprintf(stderr, "Failed to read content length\n");
-            close(client_socket);
+            // close(client_socket);
             return NULL;
         }
         content_length[20] = '\0';
         int content_len = atoi(content_length);
 
         // Allocate buffer for data
-        char * data_buffer = malloc(content_len + 1);
+        char *data_buffer = malloc(content_len + 1);
         if (data_buffer == NULL)
         {
             fprintf(stderr, "Failed to allocate memory for data buffer\n");
-            close(client_socket);
+            // close(client_socket);
             return NULL;
         }
 
         // Read DATA (CONTENT_LENGTH bytes) in a loop
         size_t total_bytes_read = 0;
 
-        // while (total_bytes_read < content_len)
-        // {
-        //     bytes_received = recv(client_socket, data_buffer + total_bytes_read, content_len - total_bytes_read, 0);
-        //     if (bytes_received <= 0)
-        //     {
-        //         fprintf(stderr, "Failed to read data\n");
-        //         free(data_buffer);
-        //         close(client_socket);
-        //         return NULL;
-        //     }
-        //     total_bytes_read += bytes_received;
-        // }
-        total_bytes_read = recv(client_socket, data_buffer, content_len, 0);
+        while (total_bytes_read < content_len)
+        {
+            bytes_received = recv(client_socket, data_buffer + total_bytes_read, content_len - total_bytes_read, 0);
+            if (bytes_received <= 0)
+            {
+                fprintf(stderr, "Failed to read data\n");
+                free(data_buffer);
+                // close(client_socket);
+                return NULL;
+            }
+            total_bytes_read += bytes_received;
+        }
+        // total_bytes_read = recv(client_socket, data_buffer, content_len, 0);
 
-        if (total_bytes_read < content_len){
+        if (total_bytes_read < content_len)
+        {
             fprintf(stderr, "Failed to read data\n");
             free(data_buffer);
-            close(client_socket);
+            // close(client_socket);
             return NULL;
         }
-        if(data_buffer[content_len-1]=='\0'){
-            fprintf(stderr,"null character because");
+        if (data_buffer[content_len - 1] == '\0')
+        {
+            fprintf(stderr, "null character because");
         }
         // data_buffer[content_len-1] = '\0'; // Null-terminate the data
         data_buffer[content_len] = '\0'; // Null-terminate the data
         // fprintf(stderr, "Received data: %s\n", data_buffer);
-        for (int i = 0; i<content_len; i++){
-            fprintf(stderr, "%c", data_buffer[i]);            
+        for (int i = 0; i < content_len; i++)
+        {
+            fprintf(stderr, "%c", data_buffer[i]);
         }
         fprintf(stderr, "\n");
 
@@ -995,31 +1052,33 @@ void * handle_connection(void *arg)
         int port = atoi(port_str);
 
         // Remaining data contains strings (paths)
-        char* remaining_data = data_buffer + 5;
-        //size_t remaining_length = content_len - 5;
+        char *remaining_data = data_buffer + 5;
+        // size_t remaining_length = content_len - 5;
         fprintf(stderr, "Remaining data: ");
-        for(int i=0;i<sizeof(remaining_data);i++){
-            if(remaining_data[i] =='\0'){
-                //fprintf(stderr,"null character");
+        for (int i = 0; i < sizeof(remaining_data); i++)
+        {
+            if (remaining_data[i] == '\0')
+            {
+                // fprintf(stderr,"null character");
                 remaining_data[i] = ' ';
             }
-            fprintf(stderr,"%c",remaining_data[i]);
+            fprintf(stderr, "%c", remaining_data[i]);
         }
-        fprintf(stderr,"\n");
+        fprintf(stderr, "\n");
 
         // Accumulate the required strings (skip every second string)
         char accumulated_paths[16384]; // Adjust size as needed
         size_t accumulated_length = 0;
 
-        char* line;
-        char* saveptr1;
+        char *line;
+        char *saveptr1;
         line = strtok_r(remaining_data, "\n", &saveptr1);
         fprintf(stderr, "saveptr: ");
-        for(int i=0; i<sizeof(saveptr1);i++)
+        for (int i = 0; i < sizeof(saveptr1); i++)
         {
-            fprintf(stderr,"%c",saveptr1[i]);
+            fprintf(stderr, "%c", saveptr1[i]);
         }
-        fprintf(stderr,"\n");
+        fprintf(stderr, "\n");
         while (line != NULL)
         {
             // Skip blank lines
@@ -1030,12 +1089,11 @@ void * handle_connection(void *arg)
                 continue;
             }
 
-
             // Split the line into tokens
-            char* path;
-            char* skip;
-            char* timestamp;
-            char* saveptr2;
+            char *path;
+            char *skip;
+            char *timestamp;
+            char *saveptr2;
 
             path = strtok_r(line, " ", &saveptr2);
             skip = strtok_r(NULL, " ", &saveptr2);
@@ -1062,7 +1120,7 @@ void * handle_connection(void *arg)
                 {
                     fprintf(stderr, "Accumulated paths buffer overflow\n");
                     free(data_buffer);
-                    close(client_socket);
+                    // close(client_socket);
                     return NULL;
                 }
             }
@@ -1086,44 +1144,164 @@ void * handle_connection(void *arg)
             if (bytes_received != 30)
             {
                 fprintf(stderr, "Failed to read header from storage server\n");
-                close(client_socket);
+                // close(client_socket);
                 return NULL;
             }
             header[30] = '\0';
             // Parse header fields
-            char request_type;
+            char exit_status;
             char req_id_str[10];
             char content_length_str[21];
-            request_type = header[0];
+            exit_status = header[0];
             strncpy(req_id_str, &header[1], 9);
             req_id_str[9] = '\0';
+            int req_id = atoi(req_id_str);
+            int req_type = request_array[req_id].req_id;
             strncpy(content_length_str, &header[10], 20);
             content_length_str[20] = '\0';
             int content_length = atoi(content_length_str);
-            fprintf(stderr, "Received request from storage server\n");
-            fprintf(stderr, "request type: %c\n", request_type);
-            fprintf(stderr, "request id: %s\n", req_id_str);
-            fprintf(stderr, "content length: %d\n", content_length);
 
-
+            if (content_length > 0)
+            {
+                // read content from storage server
+                fprintf(stderr, "error : content_length: %d\n", content_length);
+                char *content = malloc(content_length + 1);
+                if (!content)
+                {
+                    fprintf(stderr, "Failed to allocate memory for content\n");
+                    close(client_socket);
+                    return NULL;
+                }
+                bytes_received = read_n_bytes(client_socket, content, content_length);
+                if (bytes_received != content_length)
+                {
+                    fprintf(stderr, "Failed to read content from storage server\n");
+                    free(content);
+                    close(client_socket);
+                    return NULL;
+                }
+                content[content_length] = '\0';
+                fprintf(stderr, "content: %s\n", content);
             // read content from storage server
             char *content = malloc(content_length + 1);
             if (!content)
             {
                 fprintf(stderr, "Failed to allocate memory for content\n");
-                close(client_socket);
+                // close(client_socket);
                 return NULL;
             }
-            bytes_received = read_n_bytes(client_socket, content, content_length);
-            if (bytes_received != content_length)
+            else
             {
-                fprintf(stderr, "Failed to read content from storage server\n");
+
+                // send header back to the client with a content sending a success or failure message from the combination of request type and error code enum
+                // Prepare header
+                char response_header[31]; // 30 bytes + null terminator
+                char req_id_str[10];
+                char content_length_str[21];
+                strncpy(&response_header[0], exit_status, 1);
+                strncpy(&response_header[1], req_id_str, 9);
+                int content_len = 0;
+                char str1[30];
+                char str2[30];
+
+                // use the request_type and exit_status enum to generate content message
+                // each switch case generates a different message
+                // send the message back to the client
+                switch (req_id)
+                {
+                case READ:
+                    strncpy(str1, "READ request:", strlen("READ request:"));
+                    content_len += strlen("READ request:");
+                    break;
+                case WRITE:
+                    strncpy(str1, "WRITE request:", strlen("WRITE request:"));
+                    content_len += strlen("WRITE request:");
+                    break;
+                case STREAM:
+                    strncpy(str1, "STREAM request:", strlen("STREAM request:"));
+                    content_len += strlen("STREAM request:");
+                    break;
+                case INFO:
+                    strncpy(str1, "INFO request:", strlen("INFO request:"));
+                    content_len += strlen("INFO request:");
+                    break;
+                case LIST:
+                    strncpy(str1, "LIST request:", strlen("LIST request:"));
+                    content_len += strlen("LIST request:");
+                    break;
+                case CREATE:
+                    strncpy(str1, "CREATE request:", strlen("CREATE request:"));
+                    content_len += strlen("CREATE request:");
+                    break;
+                case COPY:
+                    strncpy(str1, "COPY request:", strlen("COPY request:"));
+                    content_len += strlen("COPY request:");
+                    break;
+                case DELETE:
+                    strncpy(str1, "DELETE request:", strlen("DELETE request:"));
+                    content_len += strlen("DELETE request:");
+                    break;
+                default:
+                    break;
+                }
+
+                switch (exit_status)
+                {
+                case SUCCESS:
+                    strncpy(str2, "SUCCESS", strlen("SUCCESS"));
+                    content_len += strlen("SUCCESS");
+                    break;
+                case ACK:
+                    strncpy(str2, "ACK", strlen("ACK"));
+                    content_len += strlen("ACK");
+                    break;
+                case E_FILE_DOESNT_EXIST:
+                    strncpy(str2, "E_FILE_DOESNT_EXIST", strlen("E_FILE_DOESNT_EXIST"));
+                    content_len += strlen("E_FILE_DOESNT_EXIST");
+                    break;
+                case E_FILE_ALREADY_EXISTS:
+                    strncpy(str2, "E_FILE_ALREADY_EXISTS", strlen("E_FILE_ALREADY_EXISTS"));
+                    content_len += strlen("E_FILE_ALREADY_EXISTS");
+                    break;
+                case E_INCOMPLETE_WRITE:
+                    strncpy(str2, "E_INCOMPLETE_WRITE", strlen("E_INCOMPLETE_WRITE"));
+                    content_len += strlen("E_INCOMPLETE_WRITE");
+                    break;
+                case E_FAULTY_SS:
+                    strncpy(str2, "E_FAULTY_SS", strlen("E_FAULTY_SS"));
+                    content_len += strlen("E_FAULTY_SS");
+                    break;
+                case E_WRONG_SS:
+                    strncpy(str2, "E_WRONG_SS", strlen("E_WRONG_SS"));
+                    content_len += strlen("E_WRONG_SS");
+                    break;
+                default:
+                    break;
+                }
+
+                // join str1 and str2 to get the final message, separated by space
+                snprintf(content_length_str, sizeof(content_length_str), "%ld", content_len);
+                char content[content_len];
+                snprintf(content, content_len, "%s %s", str1, str2);
+                int client_socket = request_array[req_id].client_socket;
+                // Prepare header
+                strncpy(&response_header[10], content_length_str, 20);
+                response_header[30] = '\0';
+                // send header and content to the client using client socket
+                if (write_n_bytes(client_socket, response_header, 30) != 30 ||
+                    write_n_bytes(client_socket, content, content_len) != (ssize_t)content_len)
+                {
+                    fprintf(stderr, "Failed to send response to client\n");
+                    free(content);
+                    return NULL;
+                }
                 free(content);
-                close(client_socket);
+            }
+                // close(client_socket);
                 return NULL;
             }
             content[content_length] = '\0';
-            fprintf(stderr, "content: %s\n", content);    
+            fprintf(stderr, "content: %s\n", content);
         }
     }
     else
@@ -1133,7 +1311,7 @@ void * handle_connection(void *arg)
         // fprintf(stderr, "Received request from client\n");
         fprintf(stderr, "request type: %c\n", request_type);
         handle_client(client_socket, request_type);
-        close(client_socket);
+        // close(client_socket);
     }
 
     return NULL;
@@ -1141,128 +1319,157 @@ void * handle_connection(void *arg)
 
 void handle_client(int client_socket, char initial_request_type)
 {
-    char header[30]; // 30 bytes
-    ssize_t bytes_received;
-
-    // We already received the first byte of the header as initial_request_type
-    header[0] = initial_request_type;
-    fprintf(stderr, "initial_request_type: %c\n", header[0]);
-    // Read the remaining 29 bytes of the header
-    bytes_received = read_n_bytes(client_socket, &header[1], 29);
-    if (bytes_received != 29)
+    while (1)
     {
-        fprintf(stderr, "Failed to read header from client\n");
-        close(client_socket);
-        return;
-    }
-    // fprintf(stderr, "blalalal\n");
-    fprintf(stderr, "header: %s\n", header);
+        char header[30]; // 30 bytes
+        ssize_t bytes_received;
 
-    char request_type = header[0];
+        // We already received the first byte of the header as initial_request_type
+        header[0] = initial_request_type;
+        fprintf(stderr, "initial_request_type: %c\n", header[0]);
+        // Read the remaining 29 bytes of the header
+        bytes_received = read_n_bytes(client_socket, &header[1], 29);
+        if(bytes_received==0){
+            fprintf(stderr, "client closed connection, breaking\n");
+            break;
+        }
+        if (bytes_received != 29)
+        {
+            fprintf(stderr, "Failed to read header from client\n");
+            // close(client_socket);
+            return;
+        }
+        // fprintf(stderr, "blalalal\n");
+        fprintf(stderr, "header: %s\n", header);
 
-    // Parse header fields
-    char id_str[10];
-    char content_length_str[21];
+        char request_type = header[0];
 
-    strncpy(id_str, &header[1], 9);
-    fprintf(stderr, "id_str: %s\n", id_str);
-    id_str[9] = '\0';
+        // Parse header fields
+        char id_str[10];
+        char content_length_str[21];
 
-    strncpy(content_length_str, &header[10], 20);
-    content_length_str[20] = '\0';
-    fprintf(stderr, "content_length_str: %s\n", content_length_str);
+        strncpy(id_str, &header[1], 9);
+        fprintf(stderr, "id_str: %s\n", id_str);
+        id_str[9] = '\0';
 
-    int client_req_id = atoi(id_str);
-    long content_length = atol(content_length_str);
-    fprintf(stderr, "client_req_id: %d\n", client_req_id);
-    fprintf(stderr, "content_length: %ld\n", content_length);
+        strncpy(content_length_str, &header[10], 20);
+        content_length_str[20] = '\0';
+        fprintf(stderr, "content_length_str: %s\n", content_length_str);
 
-    // Read content from client
-    char *content = malloc(content_length + 1);
-    if (!content)
-    {
-        fprintf(stderr, "Failed to allocate memory for content\n");
-        close(client_socket);
-        return;
-    }
+        int client_req_id = atoi(id_str);
+        long content_length = atol(content_length_str);
+        fprintf(stderr, "client_req_id: %d\n", client_req_id);
+        fprintf(stderr, "content_length: %ld\n", content_length);
 
-    bytes_received = read_n_bytes(client_socket, content, content_length);
-    if (bytes_received != content_length)
-    {
-        fprintf(stderr, "Failed to read content from client\n");
-        free(content);
-        close(client_socket);
-        return;
-    }
-    content[content_length] = '\0';
-    fprintf(stderr, "content: %s\n", content);
+        // Read content from client
+        char *content = malloc(content_length + 1);
+        if (!content)
+        {
+            fprintf(stderr, "Failed to allocate memory for content\n");
+            // close(client_socket);
+            return;
+        }
 
-    
+        bytes_received = read_n_bytes(client_socket, content, content_length);
+        if (bytes_received != content_length)
+        {
+            fprintf(stderr, "Failed to read content from client\n");
+            free(content);
+            // close(client_socket);
+            return;
+        }
+        content[content_length] = '\0';
+        fprintf(stderr, "content: %s\n", content);
+
     pthread_mutex_lock(&global_req_id_mutex);
     int storage_req_id = global_req_id++;
-    FILE * fd = fopen("requests.txt", "a");
-    if (fd == NULL) {
+
+    request_array[storage_req_id].req_id = request_type;
+    request_array[storage_req_id].client_socket = client_socket;
+    FILE *fd = fopen("requests.txt", "a");
+    if (fd == NULL)
+    {
         perror("Error opening requests.txt");
         free(content);
         pthread_mutex_unlock(&global_req_id_mutex);
         return;
     }
 
-    char file_write_buffer[256];
-    int len = snprintf(file_write_buffer, sizeof(file_write_buffer), "%d request: id: %c req_id: %s content_length %s\n", storage_req_id, header[0], id_str, content_length_str);
-    fwrite(file_write_buffer, 1, len, fd);
+// <<<<<<< bhavya
+//     char file_write_buffer[256];
+//     int len = snprintf(file_write_buffer, sizeof(file_write_buffer), "%d request: id: %c req_id: %s content_length %s\n", storage_req_id, header[0], id_str, content_length_str);
+//     fwrite(file_write_buffer, 1, len, fd);
+// =======
+//         pthread_mutex_lock(&global_req_id_mutex);
+//         int storage_req_id = global_req_id++;
+//         FILE *fd = fopen("requests.txt", "a");
+//         if (fd == NULL)
+//         {
+//             perror("Error opening requests.txt");
+//             free(content);
+//             pthread_mutex_unlock(&global_req_id_mutex);
+//             return;
+//         }
+// >>>>>>> main
 
-    fclose(fd);  
-    pthread_mutex_unlock(&global_req_id_mutex);
+        char file_write_buffer[256];
+        int len = snprintf(file_write_buffer, sizeof(file_write_buffer), "%d request: id: %c req_id: %s content_length %s\n", storage_req_id, header[0], id_str, content_length_str);
+        fwrite(file_write_buffer, 1, len, fd);
 
-    client_req_id = storage_req_id;
-    
+        fclose(fd);
+        pthread_mutex_unlock(&global_req_id_mutex);
 
-    // Handle the request based on request_type
-    if (request_type == '6') // '6' for CREATE
-    {
-        fprintf(stderr, "Received CREATE request from client\n");
-        handle_create_request(client_socket, client_req_id, content, content_length);
-    }
-    else if (request_type == '1' || request_type == '3')
-    {
-        fprintf(stderr, "Received READ/STREAM request from client\n");
-        handle_rs_request(client_socket, client_req_id, content, content_length, request_type);
-    } 
-    else if(request_type == '2'){ // TO BE DONE
-        fprintf(stderr, "Received WRITE request from client\n");
-        //handle_write_request(client_socket, client_req_id, content, content_length);
-    }
-    else if (request_type == '4')
-    {
-        fprintf(stderr, "Received INFO request from client\n");
-        handle_info_request(client_socket, client_req_id, content, content_length);
-    }
-    else if (request_type == '5')
-    {
-        fprintf(stderr, "Received LIST request from client\n");
-        handle_list_request(client_socket, client_req_id, content, content_length);
-    
-    }
-    else if (request_type == '7')
-    {
-        fprintf(stderr, "Received COPY request from client\n");
-        //handle_copy_request(client_socket, client_req_id, content, content_length);
+        client_req_id = storage_req_id;
 
+
+        // Handle the request based on request_type
+        if (request_type == '6') // '6' for CREATE
+        {
+            fprintf(stderr, "Received CREATE request from client\n");
+            handle_create_request(client_socket, client_req_id, content, content_length);
+        }
+        else if (request_type == '1' || request_type == '3')
+        {
+            fprintf(stderr, "Received READ/STREAM request from client\n");
+            handle_rws_request(client_socket, client_req_id, content, content_length, request_type);
+        }
+        else if (request_type == '2')
+        { // TO BE DONE
+            fprintf(stderr, "Received WRITE request from client\n");
+            // handle_write_request(client_socket, client_req_id, content, content_length);
+        }
+        else if (request_type == '4')
+        {
+            fprintf(stderr, "Received INFO request from client\n");
+            handle_info_request(client_socket, client_req_id, content, content_length);
+        }
+        else if (request_type == '5')
+        {
+            fprintf(stderr, "Received LIST request from client\n");
+            handle_list_request(client_socket, client_req_id, content, content_length);
+        }
+        else if (request_type == '7')
+        {
+            fprintf(stderr, "Received COPY request from client\n");
+            // handle_copy_request(client_socket, client_req_id, content, content_length);
+        }
+        else if (request_type == '8')
+        {
+            fprintf(stderr, "Received DELETE request from client\n");
+            // handle_delete_request(client_socket, client_req_id, content, content_length);
+        }
+        else if (request_type == '9')
+        {
+            fprintf(stderr, "dumbass\n");
+        }
+        else
+        {
+            fprintf(stderr, "Invalid request type received: %c\n", request_type);
+            send_error_response(client_socket, client_req_id, "Error: Invalid request type\n");
+        }
+        free(content);
     }
-    else if(request_type == '8')
-    {
-        fprintf(stderr, "Received DELETE request from client\n");
-        //handle_delete_request(client_socket, client_req_id, content, content_length);
-    }
-    else
-    {
-        fprintf(stderr, "Invalid request type received: %c\n", request_type);
-        send_error_response(client_socket, client_req_id, "Error: Invalid request type\n");
-    }
-    free(content);
 }
-
 
 void *accept_connections(void *arg)
 {
@@ -1347,7 +1554,7 @@ int main(int argc, char *argv[])
 
     // Set Options
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT,
-                    &opt, sizeof(opt)))
+                   &opt, sizeof(opt)))
     {
         perror("Setsockopt");
         exit(EXIT_FAILURE);
@@ -1377,7 +1584,7 @@ int main(int argc, char *argv[])
     // Main loop to accept and handle clients sequentially
 
     sem_wait(&storage_server_sem); // Wait until at least one storage server is connected
-    //pthread_join(accept_thread, NULL);
+    // pthread_join(accept_thread, NULL);
     pthread_exit(NULL);
 
     sem_destroy(&storage_server_sem);
