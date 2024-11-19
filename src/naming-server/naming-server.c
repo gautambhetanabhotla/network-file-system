@@ -25,54 +25,22 @@ TrieNode *search_trie_node(const char *path, TrieNode *root)
     TrieNode *current_node = root;
     const char *p = path;
 
-    while (*p)
-    {
-        // Skip multiple slashes
-        while (*p == '/')
-            p++;
-
-        if (*p == '\0')
-            break;
-
-        // Extract the next component of the path
-        char name[MAX_FILENAME_LENGTH];
-        int i = 0;
-        while (*p != '/' && *p != '\0' && i < MAX_FILENAME_LENGTH - 1)
+    if(strlen(path)==1){
+        if (path[0] == '/')
         {
-            name[i++] = *p;
-            p++;
+            return root;
         }
-        name[i] = '\0';
-
-        // Traverse to the next node
-        if (current_node->children[(unsigned char)name[0]])
-        {
-            current_node = current_node->children[(unsigned char)name[0]];
-            // Continue matching the rest of the name
-            for (int j = 1; name[j] != '\0'; j++)
-            {
-                if (current_node->children[(unsigned char)name[j]])
-                {
-                    current_node = current_node->children[(unsigned char)name[j]];
-                }
-                else
-                {
-                    return NULL;
-                }
-            }
-
-            // Check if the node represents the complete name
-            if (current_node->file_entry == NULL || strcmp(current_node->file_entry->filename, name) != 0)
-            {
-                return NULL;
-            }
-        }
-        else
-        {
-            return NULL;
-        }
+        
     }
 
+    while (*p)
+    {
+        unsigned char index = (unsigned char)*p;
+        if (!current_node->children[index])
+            return NULL;
+        current_node = current_node->children[index];
+        p++;
+    }
     return current_node;
 }
 
@@ -199,6 +167,7 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
     int total_read = 0;
     fprintf(stderr, "content_length: %ld\n", content_length);
     fprintf(stderr, "content: %s\n", content);
+    //content[content_length-1] = '\0';
 
     FileEntry *file = search_path(content, root);
     if (file == NULL)
@@ -212,8 +181,8 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
         int id = file->ss_ids[0];
         StorageServerInfo ss_info = storage_servers[id];
         // Prepare response content with IP and Port
-        char response_content[256];
-        snprintf(response_content, sizeof(response_content), "%s\n%d\n", ss_info.ip_address, ss_info.port);
+        char response_content[256]={0};
+        snprintf(response_content, sizeof(response_content), "%s\n%d\n", ss_info.ip_address, ss_info.client_port);
         size_t response_content_length = strlen(response_content);
 
         // Prepare header
@@ -238,7 +207,7 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
             free(path_buffer);
             return;
         }
-        fprintf(stderr, "Sent storage server info to client: IP=%s, Port=%d\n", ss_info.ip_address, ss_info.port);
+        fprintf(stderr, "Sent storage server info to client: IP=%s, Port=%d\n", ss_info.ip_address, ss_info.client_port);
     }
 
     free(path_buffer);
@@ -996,10 +965,12 @@ void handle_list_request(int client_socket, int client_req_id, char *content, lo
         send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
         return;
     }
+    fprintf(stderr, "content: %s\n", content);
     memcpy(folder_path, content, content_length);
-    folder_path[content_length] = '\0';
+    folder_path[content_length-1] = '\0';
 
     // 1. Determine whether the folder exists
+
     TrieNode *folder_node = search_trie_node(folder_path, root);
     if (folder_node == NULL)
     {
@@ -1013,7 +984,6 @@ void handle_list_request(int client_socket, int client_req_id, char *content, lo
     size_t response_content_length = 0;
 
     list_paths(folder_node, folder_path, &response_content, &response_content_length);
-
     if (response_content == NULL || response_content_length == 0)
     {
         send_error_response(client_socket, client_req_id, "Error: No files or folders found\n");
@@ -1049,44 +1019,20 @@ void handle_list_request(int client_socket, int client_req_id, char *content, lo
 
 void collect_paths(TrieNode *node, char *current_path, int depth, char **output, size_t *output_length)
 {
-    if (node == NULL)
+    if (node->file_entry){
+        output[*output_length] = strdup(current_path);
+        (*output_length)++; 
+
         return;
-
-    if (node->file_entry)
-    {
-        current_path[depth] = '\0';
-
-        // Append the current path to the output
-        size_t path_length = strlen(current_path);
-        size_t new_length = *output_length + path_length + 1; // +1 for newline
-
-        char *temp = realloc(*output, new_length + 1); // +1 for null terminator
-        if (!temp)
-        {
-            fprintf(stderr, "Memory allocation failed\n");
-            return;
-        }
-        *output = temp;
-
-        memcpy(*output + *output_length, current_path, path_length);
-        (*output)[*output_length + path_length] = '\n';
-        (*output)[new_length] = '\0';
-
-        *output_length = new_length;
     }
-
     for (int i = 0; i < 256; i++)
     {
         if (node->children[i])
         {
-            if (depth + 1 >= MAX_PATH_LENGTH)
-            {
-                fprintf(stderr, "Path too long\n");
-                continue;
-            }
-
-            current_path[depth] = (char)i;
-            collect_paths(node->children[i], current_path, depth + 1, output, output_length);
+            char child_path[MAX_PATH_LENGTH];
+            memcpy(child_path, current_path, depth);
+            child_path[depth] = (char)i;
+            collect_paths(node->children[i], child_path, depth + 1, output, output_length);
         }
     }
 }
@@ -1094,13 +1040,20 @@ void collect_paths(TrieNode *node, char *current_path, int depth, char **output,
 // Recursive function to collect all paths under a folder node
 void list_paths(TrieNode *node, const char *base_path, char **output, size_t *output_length)
 {
-    if (node == NULL)
-        return;
+    char current_path[MAX_PATH_LENGTH];
+    memcpy(current_path, base_path, strlen(base_path));
+    collect_paths(node, current_path, strlen(base_path), output, output_length);
 
-    char path_buffer[MAX_PATH_LENGTH];
-    strcpy(path_buffer, base_path);
-
-    collect_paths(node, path_buffer, strlen(base_path), output, output_length);
+    for (int i = 0; i < 256; i++)
+    {
+        if (node->children[i])
+        {
+            char child_path[MAX_PATH_LENGTH];
+            memcpy(child_path, base_path, strlen(base_path));
+            child_path[strlen(base_path)] = (char)i;
+            list_paths(node->children[i], child_path, output, output_length);
+        }
+    }
 }
 
 // END FOR LIST
@@ -1516,6 +1469,11 @@ void handle_client(int client_socket, char initial_request_type)
 
         client_req_id = storage_req_id;
         request_array[client_req_id].client_socket = client_socket;
+      
+        char* saveptr;
+        content = strtok_r(content, "\n", &saveptr);
+        fprintf(stderr, "tokenised content: %s\n", content);
+        content_length = strlen(content);
 
         // Handle the request based on request_type
         if (request_type == '6') // '6' for CREATE
