@@ -228,19 +228,17 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             fprintf(stderr, "timestamp: %s\n", timestamp);
             
             char file_path[4096];
+
             size_t folderpath_len = strlen(exist_folder);
             size_t name_len = strlen(to_create);
-            snprintf(file_path, sizeof(file_path), "%s/%s", exist_folder, to_create);
-            if(folderpath_len + name_len >= sizeof(file_path))
+            if(folderpath_len + name_len + 1 >= sizeof(file_path))
             {
                 fprintf(stderr, "Path too long\n");
                 send_error_response(client_socket, client_req_id, "Error: Path too long\n");
                 return;
             }
-            
-            strncpy(file_path, exist_folder, folderpath_len);
-            strncpy(file_path + folderpath_len, to_create, name_len);
-            file_path[folderpath_len + name_len] = '\0';
+            snprintf(file_path, sizeof(file_path), "%s/%s", exist_folder, to_create);
+            file_path[strlen(file_path)] = '\0';
 
             size_t content_length = strlen(file_path) + 1 + strlen(timestamp);
 
@@ -253,9 +251,9 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             }
 
             strncpy(content, file_path, strlen(file_path));
-            content[strlen(file_path)] = ' ';
-            strncpy(content + strlen(file_path) + 1, timestamp, strlen(timestamp));
-            content[content_length] = '\0';
+            content[strlen(file_path)] = '\n';
+            strncpy(content + strlen(content), timestamp, strlen(timestamp));
+            content[content_length] = '\n';
         
 
             char header[31]; // 30 bytes + null terminator
@@ -342,7 +340,7 @@ void handle_info_request(int client_socket, int client_req_id, char *content, lo
     fprintf(stderr, "Handling INFO request for path: %s\n", content);
 
     // Check if the path ends with '/'
-    if (content[content_length - 1] == '/')
+    if (content[content_length - 1] == '/' || (content[content_length - 1] == '\n' && content[content_length-2] == '/'))
     {
         fprintf(stderr, "Path is a directory, cannot get info\n");
         send_error_response(client_socket, client_req_id, "Error: Cannot get info of a directory\n");
@@ -359,119 +357,131 @@ void handle_info_request(int client_socket, int client_req_id, char *content, lo
     }
 
     // Get storage server info (use the first available server)
-    int ssid = file->ss_ids[0];
-    StorageServerInfo ss_info = storage_servers[ssid];
+    for (int i = 0; i<3; i++){
+        int ssid = file->ss_ids[i];
+        StorageServerInfo ss_info = storage_servers[ssid];
 
-    // Prepare header for storage server
-    char header[31]; // 30 bytes + null terminator
-    char req_id_str[10];
-    char content_length_str[21];
-    memset(header, 0, sizeof(header));
+        // Prepare header for storage server
+        char header[31] = {0}; // 30 bytes + null terminator
+        char req_id_str[10] = {0};
+        char content_length_str[21] = {0};
+        memset(header, 0, sizeof(header));
 
-    char operation_type = '4';               // '4' for INFO request
-    int path_length = strlen(content) + 1;   // Include null terminator
+        char operation_type = '4';               // '4' for INFO request
+        int path_length = strlen(content);   // not including null terminator
 
-    // Format request ID and content length
-    snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
-    snprintf(content_length_str, sizeof(content_length_str), "%020d", path_length);
+        // Format request ID and content length
+        snprintf(req_id_str, sizeof(req_id_str), "%d", client_req_id);
+        snprintf(content_length_str, sizeof(content_length_str), "%d", path_length);
 
-    // Construct header: operation type, request ID, content length
-    header[0] = operation_type;
-    strncpy(&header[1], req_id_str, 9);
-    strncpy(&header[10], content_length_str, 20);
-    header[30] = '\0';
+        // Construct header: operation type, request ID, content length
+        header[0] = operation_type;
+        strncpy(&header[1], req_id_str, 9);
+        strncpy(&header[10], content_length_str, 20);
+        header[30] = '\0';
 
-    // Connect to the storage server
-    struct sockaddr_in storage_server_addr;
-    storage_server_addr.sin_family = AF_INET;
-    storage_server_addr.sin_port = htons(ss_info.port);
-    storage_server_addr.sin_addr.s_addr = inet_addr(ss_info.ip_address);
+        // Connect to the storage server
+        struct sockaddr_in storage_server_addr;
+        storage_server_addr.sin_family = AF_INET;
+        storage_server_addr.sin_port = htons(ss_info.port);
+        storage_server_addr.sin_addr.s_addr = inet_addr(ss_info.ip_address);
 
-    int storage_server_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (storage_server_socket < 0)
-    {
-        fprintf(stderr, "Failed to create socket to storage server %d\n", ssid);
-        send_error_response(client_socket, client_req_id, "Error: Failed to connect to storage server\n");
-        return;
-    }
-    if (connect(storage_server_socket, (struct sockaddr *)&storage_server_addr, sizeof(storage_server_addr)) < 0)
-    {
-        fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
-        send_error_response(client_socket, client_req_id, "Error: Failed to connect to storage server\n");
+        int storage_server_socket = socket(AF_INET, SOCK_STREAM, 0);
+        if (storage_server_socket < 0)
+        {
+            fprintf(stderr, "Failed to create socket to storage server %d\n", ssid);
+            // send_error_response(client_socket, client_req_id, "Error: Failed to connect to storage server\n");
+            // return;
+            continue;
+        }
+        if (connect(storage_server_socket, (struct sockaddr *)&storage_server_addr, sizeof(storage_server_addr)) < 0)
+        {
+            fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
+            // send_error_response(client_socket, client_req_id, "Error: Failed to connect to storage server\n");
+            close(storage_server_socket);
+            continue;
+            // return;
+        }
+
+        // Send header and file path to storage server
+        if (write_n_bytes(storage_server_socket, header, 30) != 30 ||
+            write_n_bytes(storage_server_socket, content, path_length) != (ssize_t)path_length)
+        {
+            fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
+            // send_error_response(client_socket, client_req_id, "Error: Failed to send request to storage server\n");
+            close(storage_server_socket);
+            // return;
+            continue;
+        }
+
+        // Receive response header from storage server
+        char response_header[31]; // 30 bytes + null terminator
+        ssize_t bytes_received = read_n_bytes(storage_server_socket, response_header, 30);
+        if (bytes_received != 30)
+        {
+            fprintf(stderr, "Failed to read response header from storage server %d\n", ssid);
+            // send_error_response(client_socket, client_req_id, "Error: Failed to receive response from storage server\n");
+            close(storage_server_socket);
+            // return;
+            continue;
+        }
+        response_header[30] = '\0';
+
+        // Parse response header
+        char ack_code = response_header[0]; // '0' for success, '1' for error
+        char ss_req_id_str[10];
+        char ss_content_length_str[21];
+        strncpy(ss_req_id_str, &response_header[1], 9);
+        ss_req_id_str[9] = '\0';
+        strncpy(ss_content_length_str, &response_header[10], 20);
+        ss_content_length_str[20] = '\0';
+        int ss_content_length = atoi(ss_content_length_str);
+
+        // Read content from storage server
+        char *ss_content = malloc(ss_content_length);
+        if (ss_content == NULL)
+        {
+            fprintf(stderr, "Failed to allocate memory for storage server content\n");
+            // send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
+            close(storage_server_socket);
+            // return;
+            continue;
+        }
+
+        bytes_received = read_n_bytes(storage_server_socket, ss_content, ss_content_length);
+        if (bytes_received != ss_content_length)
+        {
+            fprintf(stderr, "Failed to read content from storage server\n");
+            // send_error_response(client_socket, client_req_id, "Error: Failed to receive complete response from storage server\n");
+            free(ss_content);
+            close(storage_server_socket);
+            // return;
+            continue;
+        }
+        // ss_content[ss_content_length] = '\0';
+
+        // Close connection to storage server
         close(storage_server_socket);
-        return;
-    }
 
-    // Send header and file path to storage server
-    if (write_n_bytes(storage_server_socket, header, 30) != 30 ||
-        write_n_bytes(storage_server_socket, content, path_length) != (ssize_t)path_length)
-    {
-        fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
-        send_error_response(client_socket, client_req_id, "Error: Failed to send request to storage server\n");
-        close(storage_server_socket);
-        return;
-    }
+        // Adjust the request ID in the response header to match the client's request ID
+        // strncpy(&response_header[1], req_id_str, 9);
 
-    // Receive response header from storage server
-    char response_header[31]; // 30 bytes + null terminator
-    ssize_t bytes_received = read_n_bytes(storage_server_socket, response_header, 30);
-    if (bytes_received != 30)
-    {
-        fprintf(stderr, "Failed to read response header from storage server\n");
-        send_error_response(client_socket, client_req_id, "Error: Failed to receive response from storage server\n");
-        close(storage_server_socket);
-        return;
-    }
-    response_header[30] = '\0';
+        // Send response back to the client
+        if (write_n_bytes(client_socket, response_header, 30) != 30 ||
+            write_n_bytes(client_socket, ss_content, ss_content_length) != (ssize_t)ss_content_length)
+        {
+            fprintf(stderr, "Failed to send response to client\n");
+            free(ss_content);
+            return;
+        }
 
-    // Parse response header
-    char ack_code = response_header[0]; // '0' for success, '1' for error
-    char ss_req_id_str[10];
-    char ss_content_length_str[21];
-    strncpy(ss_req_id_str, &response_header[1], 9);
-    ss_req_id_str[9] = '\0';
-    strncpy(ss_content_length_str, &response_header[10], 20);
-    ss_content_length_str[20] = '\0';
-    int ss_content_length = atoi(ss_content_length_str);
-
-    // Read content from storage server
-    char *ss_content = malloc(ss_content_length + 1);
-    if (ss_content == NULL)
-    {
-        fprintf(stderr, "Failed to allocate memory for storage server content\n");
-        send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
-        close(storage_server_socket);
-        return;
-    }
-
-    bytes_received = read_n_bytes(storage_server_socket, ss_content, ss_content_length);
-    if (bytes_received != ss_content_length)
-    {
-        fprintf(stderr, "Failed to read content from storage server\n");
-        send_error_response(client_socket, client_req_id, "Error: Failed to receive complete response from storage server\n");
+        fprintf(stderr, "INFO response sent to client successfully\n");
         free(ss_content);
-        close(storage_server_socket);
-        return;
-    }
-    ss_content[ss_content_length] = '\0';
-
-    // Close connection to storage server
-    close(storage_server_socket);
-
-    // Adjust the request ID in the response header to match the client's request ID
-    strncpy(&response_header[1], req_id_str, 9);
-
-    // Send response back to the client
-    if (write_n_bytes(client_socket, response_header, 30) != 30 ||
-        write_n_bytes(client_socket, ss_content, ss_content_length) != (ssize_t)ss_content_length)
-    {
-        fprintf(stderr, "Failed to send response to client\n");
-        free(ss_content);
         return;
     }
 
-    fprintf(stderr, "INFO response sent to client successfully\n");
-    free(ss_content);
+    send_error_response(client_socket, client_req_id, "Error: Failed to coommunicate successfully with storage server\n");
+    return;
 }
 
 // FOR LIST
@@ -978,7 +988,7 @@ void handle_client(int client_socket, char initial_request_type)
     
     pthread_mutex_lock(&global_req_id_mutex);
     int storage_req_id = global_req_id++;
-    int fd = open("requests.txt", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    FILE * fd = open("requests.txt", O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd < 0) {
         perror("Error opening requests.txt");
         free(content);

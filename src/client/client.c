@@ -17,10 +17,24 @@ typedef struct {
 } ThreadArgs;
 
 
-int send_it(const int op_id, const int req_id, const char * content, const int socket){
+int send_it(const int op_id, const int req_id, const char * ncontent, const int socket){
+
+    char * content = (char *) malloc (strlen(ncontent) + 2);
+    strcpy(content, ncontent);
+    if(content[strlen(content) - 1] != '\n' && strlen(ncontent) > 0){
+        content[strlen(content)] = '\n';      
+        content[strlen(content) + 1] = '\0';
+    }
+    else{
+        content[strlen(content)] = '\0';
+    }
+    
+
     if (op_id < 0 || op_id > 9 || socket <= 0){
         return -1;
     }
+
+
     char op = '0' + op_id;
     char reqid[9];
     memset(reqid, 0, sizeof(reqid));
@@ -35,21 +49,40 @@ int send_it(const int op_id, const int req_id, const char * content, const int s
     strncpy(&request[10], content_length, strlen(content_length));
     strncpy(&request[30], content, strlen(content));
     // snprintf(request, sizeof(request), "%c%s%s%s", op, reqid, content_length, content);
-    printf("REQUEST IS\n");
-    for(int i = 0; i<30; i++){
-        printf("%c", request[i]);
-    }
-    printf("\n");
+    // printf("REQUEST IS\n");
+    // for(int i = 0; i<30; i++){
+    //     printf("%c ", request[i]);
+    // }
+    // printf("\n");
+    // printf("content is %s\n", content);
     if(send(socket, request, 30 + strlen(content), 0) < 0){
         return -1;
     } 
     return 0;
 }
 
-int long_send_it(const int op_id, const int req_id, const char * content, const int socket, long long content_size){
+int long_send_it(const int op_id, const int req_id, const char * ncontent, const int socket, long long content_size){
     if (op_id < 0 || op_id > 9 || socket <= 0){
         return -1;
     }
+
+    char * content = (char *) malloc (strlen(ncontent) + 2);
+    strcpy(content, ncontent);
+    
+    if(content[strlen(content) - 1] != '\n' && strlen(ncontent) > 0){
+        content[strlen(content)] = '\n';      
+        content[strlen(content) + 1] = '\0';
+    }
+    else{
+        content[strlen(content)] = '\0';
+    }
+    
+
+    if (op_id < 0 || op_id > 9 || socket <= 0){
+        return -1;
+    }
+
+
     char op = '0' + op_id;
     char reqid[9];
     memset(reqid, 0, sizeof(reqid));
@@ -888,7 +921,23 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
 
 }
 
+// accepted operations: 
+//READ filepath
+//WRITE sourcefilepath destfilepath
+//CREATE folderpath (name) (name can be file or folder)
+//DELETE folderpath (name) (name can be file or folder)
+//COPY sourcepath destpath (assumes only for files)
+//INFO filepath (filesize, last modified time, whatever)
+//STREAM audiofilepath
+//LIST folderpath
+// flag --SYNC will be considered too, ASSUMPTION: it must be at the end
+// ASSUMPTION only write can be asynchronous
 
+void help(){
+    printf("Available commands:\n");
+    printf("CREATE <folderpath> <folderpath/filepath>\nREAD <filepath>\nWRITE <localsourcefilepath> <destfilepath>\nDELETE <folderpath> <folderpath/filepath>\nCOPY <sourcepath(file/folder)> <destpath(file/folder)>\nINFO <filepath>\nSTREAM <audiofilepath>\nSTOP\nHELP\n");
+    return;
+}
 
 int main(int argc, char* argv[]) {
     char request[BUFFER_SIZE];
@@ -922,6 +971,9 @@ int main(int argc, char* argv[]) {
             printf("Sorry, input exceeded buffer size.\n");
             continue;
         } 
+        if (request[0] == '\n') {
+            continue;
+        }
 
 
                 // Check if --SYNC flag is present
@@ -932,10 +984,11 @@ int main(int argc, char* argv[]) {
             *sync_pos = '\0';  // Null-terminate to remove the flag from the command string
         }
 
+
         // Split command and arguments
         char operation[50], arg1[FILEPATH_SIZE], arg2[FILEPATH_SIZE];
         int num_args = sscanf(request, "%49s %4096s %4096s", operation, arg1, arg2);
-        printf("%s\n%s\n%s IS OVER", operation, arg1, arg2);
+        // printf("%s\n%s\n%s IS OVER", operation, arg1, arg2);
 
         // Determine the operation and call the corresponding function
         if (strcmp(operation, "WRITE") == 0 && num_args == 3) {
@@ -963,8 +1016,16 @@ int main(int argc, char* argv[]) {
         else if (strcmp(operation, "COPY") == 0 && num_args == 3) {
             copy(arg1, arg2);
         } 
+        else if (strcmp(operation, "HELP") == 0 && num_args == 1) {
+            help();
+        }
+        else if (strcmp(operation, "STOP") == 0 && num_args == 1) {
+            close(ns_socket);
+            printf("Goodbye!\n");
+            exit(0);
+        }
         else {
-            printf("ERROR: Invalid operation or incorrect arguments.\n");
+            printf("ERROR: Invalid operation or incorrect arguments. For the format and available operations, use the command \"HELP\".\n");
         }
     }   
 
