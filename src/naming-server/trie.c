@@ -43,14 +43,14 @@ void set_file_entry_timestamp(FileEntry *file, const char *timestamp)
     strcpy(file->last_modified, timestamp);
 }
 
-TrieNode* search_path(const char *path, TrieNode *root)
+FileEntry* search_path(const char *path, TrieNode *root)
 {
     TrieNode *current = root;
     for (int i = 0; path[i]; i++)
     {
         unsigned char index = (unsigned char)path[i];
         if (!current->children[index])
-            return -1; // Not found
+            return NULL; // Not found
         current = current->children[index];
     }
     if (current->file_entry)
