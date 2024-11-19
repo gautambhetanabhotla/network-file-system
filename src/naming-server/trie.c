@@ -64,6 +64,13 @@ FileEntry* search_path(const char *path, TrieNode *root)
         // means it is a folder
     }
     TrieNode *current = root;
+    if(strlen(path)==1){
+        fprintf(stderr, "only one character, is it root?\n");
+        if(path[0]=='/'){
+            fprintf(stderr, "omg its root you go girl!\n");
+            return root->file_entry;
+        }
+    }
     for (int i = 0; path[i]; i++)
     {
         unsigned char index = (unsigned char)path[i];
