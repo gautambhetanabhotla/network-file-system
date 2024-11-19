@@ -11,3 +11,4 @@ test.c
 *.out
 *.bin
 requests.txt
+testdir/
