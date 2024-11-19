@@ -466,7 +466,6 @@ int read_it(const char * filepath){
     return 0;
 }
 
-
 int stream(const char * filepath){
     
     char response[BUFFER_SIZE];
@@ -478,14 +477,14 @@ int stream(const char * filepath){
 
     ssize_t ns_bytes_received;
 
-    ns_bytes_received = recv(ns_socket, response, BUFFER_SIZE, 0);
-    response[ns_bytes_received] = '\0';
+    ns_bytes_received = recv(ns_socket, response, 30, 0);
     
     
-    if (ns_bytes_received < 30) {
+    if (ns_bytes_received != 30) {
         perror("Failed to receive response from naming server.\n");
         return -1;
     }
+    response[ns_bytes_received] = '\0';
     char content_length[20];
     memset(content_length, 0, sizeof(content_length));
     strncpy(content_length, &response[10], 20);
@@ -494,11 +493,20 @@ int stream(const char * filepath){
         printf("Sorry, the file was not found or there was some other error in the (naming) server.\n");
         return -1;
     }
+    
 
     char reqid[9];
     memset(reqid, 0, sizeof(reqid));
     strncpy(reqid, &response[1], 9);
     int req_id = atoi(reqid);
+
+    ns_bytes_received = recv(ns_socket, response, atoi(content_length), 0);
+    response[ns_bytes_received] = '\0';
+
+    if (ns_bytes_received != atoi(content_length)) {
+        perror("Failed to receive response from naming server.\n");
+        return -1;
+    }
 
 
     
@@ -506,7 +514,7 @@ int stream(const char * filepath){
     int ss_portnum;
     char * saveptr;
 
-    ss_ip = strtok_r(&response[30], "\n", &saveptr);
+    ss_ip = strtok_r(response, "\n", &saveptr);
     char *port_str = strtok_r(NULL, "\n", &saveptr);
 
     if (!ss_ip || !port_str) {
@@ -568,7 +576,7 @@ int stream(const char * filepath){
     long long int data_length;
 
     // Send the request to the server
-    if (send_it(3, req_id, filepath, ss_socket) < 0) {
+    if (send_it(1, req_id, filepath, ss_socket) < 0) {
         perror("Failed to send request to storage server\n");
         close(ss_socket);
         return -1;
@@ -576,13 +584,13 @@ int stream(const char * filepath){
 
     // Receive the 30-byte header
     ss_bytes_received = recv(ss_socket, length_buffer, 30, 0);
-    if (ss_bytes_received < 30) {
+    if (ss_bytes_received != 30) {
         perror("Failed to receive correct response from storage server\n");
         close(ss_socket);
         return -1;
     }
 
-    length_buffer[strlen(length_buffer)] = '\0'; // Null-terminate the length buffer
+    length_buffer[ss_bytes_received] = '\0'; // Null-terminate the length buffer
 
     data_length = atoi(&length_buffer[10]); // Convert the length to an integer
 
@@ -590,11 +598,10 @@ int stream(const char * filepath){
 
     // Check if the length is negative
     if (data_length < 0) {
-        fprintf(stderr, "Error: Received negative data length\n");//(%lld) , data_length)
+        fprintf(stderr, "Error: Received negative data length\n"); //(%lld)\n", data_length
         close(ss_socket);
         return -1;
     }
-
 
     ao_device *device;
     ao_sample_format format;
@@ -625,7 +632,7 @@ int stream(const char * filepath){
     int num;
     while(1){
         // Receive the actual data
-        num = recv(ss_socket, data_buffer, BUFFER_SIZE - 1, 0);
+        num = recv(ss_socket, data_buffer, (data_length - ss_bytes_received) % (BUFFER_SIZE - 1), 0);
         if (num < 0){
             perror("Failed to receive complete data\n");
             break;
@@ -650,7 +657,6 @@ int stream(const char * filepath){
     close(ss_socket); 
     return 0;
 }
-
 
 
 void * write_async(void *args) {
@@ -729,17 +735,19 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
 
     ssize_t ns_bytes_received;
 
-    ns_bytes_received = recv(ns_socket, response, BUFFER_SIZE, 0);
+    ns_bytes_received = recv(ns_socket, response, 30, 0);
     response[ns_bytes_received] = '\0';
     
     
-    if (ns_bytes_received < 30) {
+    if (ns_bytes_received != 30) {
         perror("Failed to receive response from naming server.\n");
         return -1;
     }
+
     char content_length[20];
     memset(content_length, 0, sizeof(content_length));
     strncpy(content_length, &response[10], 20);
+
 
     if (atoi(content_length) < 0){
         printf("Sorry, the folder was not found or there was some other error in the (naming) server.\n");
@@ -751,13 +759,18 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
     strncpy(reqid, &response[1], 9);
     int req_id = atoi(reqid);
 
+    ns_bytes_received = recv(ns_socket, response, atoi(content_length), 0);
+    response[ns_bytes_received] = '\0';
+    if (ns_bytes_received != atoi(content_length)) {
+        perror("Failed to receive response from naming server.\n");
+        return -1;
+    }
 
-    
     char * ss_ip;
     int ss_portnum;
     char * saveptr;
 
-    ss_ip = strtok_r(&response[30], "\n", &saveptr);
+    ss_ip = strtok_r(response, "\n", &saveptr);
     char *port_str = strtok_r(NULL, "\n", &saveptr);
 
     if (!ss_ip || !port_str) {
