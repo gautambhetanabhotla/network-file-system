@@ -625,6 +625,11 @@ void * handle_connection(void *arg)
     int client_socket = *(int *)arg;
     free(arg);
 
+    // struct timeval timeout;
+    // timeout.tv_sec = 5;
+    // timeout.tv_usec = 0;
+
+    //setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
     char request_type;
     ssize_t bytes_received;
 
@@ -680,6 +685,7 @@ void * handle_connection(void *arg)
 
         // Read DATA (CONTENT_LENGTH bytes) in a loop
         size_t total_bytes_read = 0;
+
         // while (total_bytes_read < content_len)
         // {
         //     bytes_received = recv(client_socket, data_buffer + total_bytes_read, content_len - total_bytes_read, 0);
@@ -1096,7 +1102,8 @@ int main(int argc, char *argv[])
     // Main loop to accept and handle clients sequentially
 
     sem_wait(&storage_server_sem); // Wait until at least one storage server is connected
-    pthread_join(accept_thread, NULL);
+    //pthread_join(accept_thread, NULL);
+    pthread_exit(NULL);
 
     sem_destroy(&storage_server_sem);
     pthread_mutex_destroy(&storage_server_mutex);

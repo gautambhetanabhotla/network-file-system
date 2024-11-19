@@ -98,7 +98,7 @@ void send_paths(int nm_sockfd) {
         add_file_entry(vpath, rpath, mtime, false);
         send(nm_sockfd, vpath, strlen(vpath), 0);
         send(nm_sockfd, " ", 1, 0);
-        send(nm_sockfd, rpath, strlen(vpath), 0);
+        send(nm_sockfd, rpath, strlen(rpath), 0);
         send(nm_sockfd, " ", 1, 0);
         send(nm_sockfd, mtime, strlen(mtime), 0);
         send(nm_sockfd, "\n", 1, 0);

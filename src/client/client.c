@@ -894,7 +894,7 @@ int main(int argc, char* argv[]) {
     char request[BUFFER_SIZE];
     bool synchronous;
 
-    char serverip[] = "127.0.1.1";
+    char serverip[] = "127.0.0.1";
     int serverport = 8080;
 
     int check  = ns_connect(serverip, serverport);
