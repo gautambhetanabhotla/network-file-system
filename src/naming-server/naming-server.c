@@ -87,6 +87,9 @@ ssize_t read_n_bytes(int socket_fd, void *buffer, size_t n)
 void choose_least_full_servers(int *chosen_servers, int *num_chosen)
 {
     int min_file_counts[3] = {__INT_MAX__, __INT_MAX__, __INT_MAX__};
+    chosen_servers[0] = -1;
+    chosen_servers[1] = -1;
+    chosen_servers[2] = -1;
     for (int i = 0; i < storage_server_count; i++)
     {
         int file_count = storage_servers[i].file_count;
