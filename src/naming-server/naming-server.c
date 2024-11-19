@@ -182,10 +182,6 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
 
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length)
 {
-    pthread_mutex_lock(&global_req_id_mutex);
-    int storage_req_id = global_req_id++;
-    pthread_mutex_unlock(&global_req_id_mutex);
-    client_req_id = storage_req_id;
 
     // Parse content into folderpath and name
     char *folderpath = (char *)malloc(content_length + 1);
@@ -621,6 +617,12 @@ void handle_client(int client_socket, char initial_request_type)
     content[content_length] = '\0';
     fprintf(stderr, "content: %s\n", content);
 
+    pthread_mutex_lock(&global_req_id_mutex);
+    int storage_req_id = global_req_id++;
+    pthread_mutex_unlock(&global_req_id_mutex);
+    client_req_id = storage_req_id;
+    
+
     // Handle the request based on request_type
     if (request_type == '6') // '6' for CREATE
     {
@@ -632,6 +634,28 @@ void handle_client(int client_socket, char initial_request_type)
         fprintf(stderr, "Received READ/WRITE/STREAM request from client\n");
         handle_rws_request(client_socket, client_req_id, content, content_length, request_type);
     }
+    else if (request_type == '4')
+    {
+        fprintf(stderr, "Received INFO request from client\n");
+        handle_info_request(client_socket, client_req_id, content, content_length);
+    }
+    else if (request_type == '5')
+    {
+        fprintf(stderr, "Received LIST request from client\n");
+        handle_list_request(client_socket, client_req_id, content, content_length);
+    
+    }
+    else if (request_type == '7')
+    {
+        fprintf(stderr, "Received COPY request from client\n");
+        handle_copy_request(client_socket, client_req_id, content, content_length);
+
+    }
+    else if(request_type == '8')
+    {
+        fprintf(stderr, "Received DELETE request from client\n");
+        handle_delete_request(client_socket, client_req_id, content, content_length);
+    }
     else
     {
         fprintf(stderr, "Invalid request type received: %c\n", request_type);
@@ -640,8 +664,6 @@ void handle_client(int client_socket, char initial_request_type)
 
     free(content);
 }
-
-
 
 
 void *accept_connections(void *arg)
