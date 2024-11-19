@@ -332,6 +332,7 @@ int delete_file(const char *path, FileEntry *entry, int client_req_id)
         header[0] = '8'; // '7' for DELETE operation
         strncpy(&header[1], req_id_str, 9);
         strncpy(&header[10], content_length_str, 20);
+        fprintf(stderr, "header: %s\n", header);
 
         // Send header and path
         if (write_n_bytes(ss_socket, header, 30) != 30 ||
@@ -630,11 +631,19 @@ void handle_delete_request(int client_socket, int client_req_id, char *content, 
     {
         // It's a file
         result = delete_file(path, entry, client_req_id);
+        // also delete from trie, make parent point to NULL
+        pthread_mutex_lock(&trie_mutex);
+        delete_from_trie(path, root);
+        pthread_mutex_unlock(&trie_mutex);
     }
     else
     {
         // It's a directory
         result = delete_directory(path, client_req_id);
+        // also delete from trie, make parent point to NULL
+        pthread_mutex_lock(&trie_mutex);
+        delete_from_trie(path, root);
+        pthread_mutex_unlock(&trie_mutex);
     }
 
     if (result < 0)
@@ -645,6 +654,35 @@ void handle_delete_request(int client_socket, int client_req_id, char *content, 
 
     // Send success response to client
     send_success(client_socket, client_req_id, "Delete operation successful\n");
+}
+
+
+// function to delete node from a trie by making parent point to NULL
+void delete_from_trie(char *path, struct TrieNode *root) {
+    struct TrieNode *current = root;
+    char last = path[strlen(path) - 1];
+    if(strlen(path)==1){
+        if (path[0] == '/')
+        {
+            fprintf(stderr, "cannot delete root\n");
+            return;
+        }
+    }
+    if(path[0]!='/'){
+        fprintf(stderr, "path does not start with /\n");
+        return;
+    }
+    for (int i = 1; path[i]; i++) {
+        unsigned char index = (unsigned char)path[i];
+        if (!current->children[index]) return;
+        if (i == strlen(path) - 1) {
+            current->children[index]->file_entry = NULL;
+            current->children[index] = NULL;
+            return;
+        }
+        current = current->children[index];
+    }
+    current->file_entry = NULL;
 }
 
 int send_success(int client_socket, int client_req_id, char *message)
@@ -1157,6 +1195,12 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
         int chosen_servers[3];
         int num_chosen = 0;
         choose_least_full_servers(chosen_servers, &num_chosen);
+        fprintf(stderr, "Chosen servers: ");
+        for (int i = 0; i < num_chosen; i++)
+        {
+            fprintf(stderr, "%d ", chosen_servers[i]);
+        }
+        fprintf(stderr, "\n");
         insert_path(path, chosen_servers, num_chosen, root);
         // Move to the next path
 
