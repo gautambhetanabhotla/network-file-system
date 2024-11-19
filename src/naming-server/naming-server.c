@@ -203,39 +203,57 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
         send_error_response(client_socket, client_req_id, "Error: Folder does not exist\n");
         return;
     }
+    else if(file->is_folder == 0)
+    {
+        fprintf(stderr, "Path is not a folder\n");
+        send_error_response(client_socket, client_req_id, "Error: Path is not a folder\n");
+        return;
+    }
     else
     {
-
         fprintf(stderr, "Folder exists\n");
-
         char *to_create = strtok_r(NULL, "\n", &saveptr);
         fprintf(stderr, "to_create: %s\n", to_create);
         if (to_create[strlen(to_create) - 1] == '/')
         {
-            int storage_server_ids[3];
-            int num_chosen = 0;
-            choose_least_full_servers(storage_server_ids, &num_chosen);
-            insert_path(to_create, storage_server_ids, num_chosen, root);
+
+            insert_path(to_create, NULL, 0, root);
+            //NEEDS TO BE CHANGED ???
         }
         else
         {
             char file_path[4096];
-            snprintf(file_path, sizeof(file_path), "%s/%s", folderpath, name);
+            snprintf(file_path, sizeof(file_path), "%s%s", folderpath, name); // folder already exists and ends with /
             char header[31]; // 30 bytes + null terminator
             char req_id_str[10];
             char content_length_str[21];
+            memset(header, 0, sizeof(header));
+            memset(req_id_str, 0, sizeof(req_id_str));
+            memset(content_length_str, 0, sizeof(content_length_str));
             char operation_type = '6';               // '6' for CREATE
             int path_length = strlen(file_path) + 1; // Include null terminator
             // send 30 bytes header: 1 byte operation type, 9 bytes request id, 20 bytes content length
-            snprintf(req_id_str, sizeof(req_id_str), "%09d", global_req_id);
-            snprintf(content_length_str, sizeof(content_length_str), "%020ld", path_length);
-            snprintf(header, sizeof(header), "%c%s%s", operation_type, req_id_str, content_length_str);
-            // send request to the 3 storage servers of the file entry
-            for(int i=0; i<3;i++)
+
+            header[0] = operation_type;
+            strncpy(&header[1], req_id_str, strlen(req_id_str));
+            strncpy(&header[10], content_length_str, strlen(content_length_str));
+            header[30] = '\0';
+            // send request to the 3 least filled storage servers of the file entry
+            int chosen_servers[3];
+            int num_chosen = 0;
+            choose_least_full_servers(chosen_servers, &num_chosen);
+
+            if(num_chosen==0)
+            {
+                send_error_response(client_socket, client_req_id, "No storage servers available\n");
+                return;
+            }
+
+            for(int i=0; i<num_chosen;i++)// what if there are less than 3 ???
             {
                 // send request to storage server
                 // send header along file path to the storage server
-                int ssid = file->ss_ids[i];
+                int ssid = chosen_servers[i];
                 StorageServerInfo ss_info = storage_servers[ssid];
                 // connect to storage server using IP and Port in the ssinfo using connect and sockaddr
                 struct sockaddr_in storage_server_addr;
@@ -275,6 +293,130 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
 
     // char *content_copy = strdup(content);
 }
+
+
+
+
+// FOR LIST
+
+void handle_list_request(int client_socket, int client_req_id, char *content, long content_length)
+{
+    // Ensure the content is null-terminated
+    char *folder_path = malloc(content_length + 1);
+    if (!folder_path)
+    {
+        send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
+        return;
+    }
+    memcpy(folder_path, content, content_length);
+    folder_path[content_length] = '\0';
+
+    // 1. Determine whether the folder exists
+    TrieNode *folder_node = search_path(folder_path, root);
+    if (folder_node == NULL)
+    {
+        send_error_response(client_socket, client_req_id, "Error: Folder does not exist\n");
+        free(folder_path);
+        return;
+    }
+
+    // 2. Collect all paths under the folder
+    char *response_content = NULL;
+    size_t response_content_length = 0;
+
+    list_paths(folder_node, folder_path, &response_content, &response_content_length);
+
+    if (response_content == NULL || response_content_length == 0)
+    {
+        send_error_response(client_socket, client_req_id, "Error: No files or folders found\n");
+        free(folder_path);
+        return;
+    }
+
+    // 3. Prepare the response header
+    char header[31];
+    memset(header, '\0', sizeof(header)); // Initialize header to '\0'
+
+    char req_id_str[10];
+    char content_length_str[21];
+
+    snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
+    snprintf(content_length_str, sizeof(content_length_str), "%020zu", response_content_length);
+
+    header[0] = '0'; // Assuming '0' indicates success
+    strncpy(&header[1], req_id_str, 9);
+    strncpy(&header[10], content_length_str, 20);
+
+    // 4. Send the response header and content to the client
+    if (write_n_bytes(client_socket, header, 30) != 30 ||
+        write_n_bytes(client_socket, response_content, response_content_length) != (ssize_t)response_content_length)
+    {
+        fprintf(stderr, "Failed to send response to client\n");
+    }
+
+    // Clean up
+    free(folder_path);
+    free(response_content);
+}
+
+
+void collect_paths(TrieNode *node, char *current_path, int depth, char **output, size_t *output_length)
+{
+    if (node == NULL)
+        return;
+
+    if (node->file_entry)
+    {
+        current_path[depth] = '\0';
+
+        // Append the current path to the output
+        size_t path_length = strlen(current_path);
+        size_t new_length = *output_length + path_length + 1; // +1 for newline
+
+        char *temp = realloc(*output, new_length + 1); // +1 for null terminator
+        if (!temp)
+        {
+            fprintf(stderr, "Memory allocation failed\n");
+            return;
+        }
+        *output = temp;
+
+        memcpy(*output + *output_length, current_path, path_length);
+        (*output)[*output_length + path_length] = '\n';
+        (*output)[new_length] = '\0';
+
+        *output_length = new_length;
+    }
+
+    for (int i = 0; i < 256; i++)
+    {
+        if (node->children[i])
+        {
+            if (depth + 1 >= MAX_PATH_LENGTH)
+            {
+                fprintf(stderr, "Path too long\n");
+                continue;
+            }
+
+            current_path[depth] = (char)i;
+            collect_paths(node->children[i], current_path, depth + 1, output, output_length);
+        }
+    }
+}
+
+// Recursive function to collect all paths under a folder node
+void list_paths(TrieNode *node, const char *base_path, char **output, size_t *output_length)
+{
+    if (node == NULL)
+        return;
+
+    char path_buffer[MAX_PATH_LENGTH];
+    strcpy(path_buffer, base_path);
+
+    collect_paths(node, path_buffer, strlen(base_path), output, output_length);
+}
+
+// END FOR LIST
 
 // Register a Storage Server
 int register_storage_server(const char *ip, int port_c, int port_ns)
@@ -349,7 +491,7 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
     pthread_mutex_unlock(&storage_server_mutex);
 }
 
-void *handle_connection(void *arg)
+void * handle_connection(void *arg)
 {
     int client_socket = *(int *)arg;
     free(arg);
@@ -399,7 +541,7 @@ void *handle_connection(void *arg)
         int content_len = atoi(content_length);
 
         // Allocate buffer for data
-        char *data_buffer = malloc(content_len + 1);
+        char * data_buffer = malloc(content_len + 1);
         if (data_buffer == NULL)
         {
             fprintf(stderr, "Failed to allocate memory for data buffer\n");
@@ -409,24 +551,36 @@ void *handle_connection(void *arg)
 
         // Read DATA (CONTENT_LENGTH bytes) in a loop
         size_t total_bytes_read = 0;
-        while (total_bytes_read < content_len)
-        {
-            bytes_received = recv(client_socket, data_buffer + total_bytes_read, content_len - total_bytes_read, 0);
-            if (bytes_received <= 0)
-            {
-                fprintf(stderr, "Failed to read data\n");
-                free(data_buffer);
-                close(client_socket);
-                return NULL;
-            }
-            total_bytes_read += bytes_received;
+        // while (total_bytes_read < content_len)
+        // {
+        //     bytes_received = recv(client_socket, data_buffer + total_bytes_read, content_len - total_bytes_read, 0);
+        //     if (bytes_received <= 0)
+        //     {
+        //         fprintf(stderr, "Failed to read data\n");
+        //         free(data_buffer);
+        //         close(client_socket);
+        //         return NULL;
+        //     }
+        //     total_bytes_read += bytes_received;
+        // }
+        total_bytes_read = recv(client_socket, data_buffer, content_len, 0);
+
+        if (total_bytes_read < content_len){
+            fprintf(stderr, "Failed to read data\n");
+            free(data_buffer);
+            close(client_socket);
+            return NULL;
         }
         if(data_buffer[content_len-1]=='\0'){
             fprintf(stderr,"null character because");
         }
-        data_buffer[content_len-1] = '\0'; // Null-terminate the data
+        // data_buffer[content_len-1] = '\0'; // Null-terminate the data
         data_buffer[content_len] = '\0'; // Null-terminate the data
-        fprintf(stderr, "Received data: %s\n", data_buffer);
+        // fprintf(stderr, "Received data: %s\n", data_buffer);
+        for (int i = 0; i<content_len; i++){
+            fprintf(stderr, "%c", data_buffer[i]);            
+        }
+        fprintf(stderr, "\n");
 
         // Process the DATA
         // First 5 bytes are the port number
@@ -437,9 +591,9 @@ void *handle_connection(void *arg)
 
         // Remaining data contains strings (paths)
         char* remaining_data = data_buffer + 5;
-        size_t remaining_length = content_len - 5;
+        //size_t remaining_length = content_len - 5;
         fprintf(stderr, "Remaining data: ");
-        for(int i=0;i<remaining_length;i++){
+        for(int i=0;i<sizeof(remaining_data);i++){
             if(remaining_data[i] =='\0'){
                 //fprintf(stderr,"null character");
                 remaining_data[i] = ' ';
@@ -456,7 +610,7 @@ void *handle_connection(void *arg)
         char* saveptr1;
         line = strtok_r(remaining_data, "\n", &saveptr1);
         fprintf(stderr, "saveptr: ");
-        for(int i=0; i< (remaining_length - strlen(line));i++)
+        for(int i=0; i<sizeof(saveptr1);i++)
         {
             fprintf(stderr,"%c",saveptr1[i]);
         }
@@ -608,17 +762,20 @@ void handle_client(int client_socket, char initial_request_type)
         fprintf(stderr, "Received CREATE request from client\n");
         handle_create_request(client_socket, client_req_id, content, content_length);
     }
-    else if (request_type == '1' || request_type == '2' || request_type == '3')
+    else if (request_type == '1' || request_type == '3')
     {
-        fprintf(stderr, "Received READ/WRITE/STREAM request from client\n");
+        fprintf(stderr, "Received READ/STREAM request from client\n");
         handle_rws_request(client_socket, client_req_id, content, content_length, request_type);
+    } 
+    else if(request_type == '2'){ // TO BE DONE
+        fprintf(stderr, "Received WRITE request from client\n");
+        //handle_write_request(client_socket, client_req_id, content, content_length);
     }
     else
     {
         fprintf(stderr, "Invalid request type received: %c\n", request_type);
         send_error_response(client_socket, client_req_id, "Error: Invalid request type\n");
     }
-
     free(content);
 }
 
