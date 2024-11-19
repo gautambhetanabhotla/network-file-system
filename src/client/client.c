@@ -210,17 +210,21 @@ int ns_request_print(int op_id, char * content) {
 
     // Receive and print the entire response in chunks
     bytes_received = recv(ns_socket, buffer, 30, 0);
+    buffer[bytes_received] = '\0'; // Null-terminate the buffer
+    printf("HEADER IS %s\n", buffer);
     int content_length = atoi(&buffer[10]);
     while(content_length){
-        bytes_received = recv(ns_socket, buffer, content_length % sizeof(buffer), 0);
+        bytes_received = recv(ns_socket, buffer, content_length % (sizeof(buffer) - 1), 0);
         if (bytes_received < 0){
             printf("Failed to receive response from naming server.\n");
             return -1;
         }
         content_length -= bytes_received;
+        buffer[bytes_received] = '\0'; // Null-terminate the buffer
         printf("%s", buffer);          // Print the received chunk
 
     }
+
 
     // while ((bytes_received = recv(ns_socket, buffer, sizeof(buffer) - 1, 0)) > 0) {
     //     buffer[bytes_received] = '\0'; // Null-terminate the buffer
