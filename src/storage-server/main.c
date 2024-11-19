@@ -54,6 +54,7 @@ int connect_to_naming_server(int argc, char* argv[]) {
 }
 
 void send_paths(int nm_sockfd) {
+    fprintf(stderr, "Sending paths to naming server...\n");
     FILE* pathsfile = fopen("./paths.txt", "r");
     if(pathsfile == NULL) pathsfile = fopen("./paths.txt", "w");
     fclose(pathsfile);
@@ -154,7 +155,7 @@ int main(int argc, char* argv[]) {
         fseek(pathsfile, 0, SEEK_SET);
         fclose(pathsfile);
     }
-    fprintf(stderr, "SENDING CONTENT LENGTH %ld\n", byte_count);
+    // fprintf(stderr, "SENDING CONTENT LENGTH %ld\n", byte_count);
     request(nm_sockfd, -1, HELLO, (long)5 + byte_count);
     // Send the port you're using to listen for clients
     char port_str[6] = {'\0'};
