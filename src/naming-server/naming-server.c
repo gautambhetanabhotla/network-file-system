@@ -431,10 +431,13 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
         fprintf(stderr, "Folder exists\n");
         char *to_create = strtok_r(NULL, "\n", &saveptr);
         fprintf(stderr, "to_create: %s\n", to_create);
+        char file_path[4096];
+        snprintf(file_path, sizeof(file_path), "%s%s", exist_folder, to_create);
+        file_path[strlen(file_path)] = '\0';
         if (to_create[strlen(to_create) - 1] == '/')
         {
-            FileEntry *file = insert_path(to_create, NULL, 0, root);
-            if (file == NULL)
+            FileEntry *file = insert_path(file_path, NULL, 0, root);
+            if (file != NULL)
             {
                 file->is_folder = 1;
             }
