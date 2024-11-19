@@ -178,7 +178,7 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
         int id = file->ss_ids[0];
         StorageServerInfo ss_info = storage_servers[id];
         // Prepare response content with IP and Port
-        char response_content[256];
+        char response_content[256]={0};
         snprintf(response_content, sizeof(response_content), "%s\n%d\n", ss_info.ip_address, ss_info.port);
         size_t response_content_length = strlen(response_content);
 
