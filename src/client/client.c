@@ -353,7 +353,7 @@ int read_it(const char * filepath){
     char *port_str = strtok_r(NULL, "\n", &saveptr);
 
     if (!ss_ip || !port_str) {
-        fprintf(stderr, "Invalid response received from naming server.\n");
+        fprintf(stderr, "\"%s\": response received from naming server.\n", response);
         return -1;
     }
     ss_portnum = atoi(port_str);     // Convert port string to integer
@@ -518,7 +518,7 @@ int stream(const char * filepath){
     char *port_str = strtok_r(NULL, "\n", &saveptr);
 
     if (!ss_ip || !port_str) {
-        fprintf(stderr, "Invalid response received from naming server.\n");
+        fprintf(stderr, "\"%s\": response received from naming server.\n", response);
         return -1;
     }
     ss_portnum = atoi(port_str);     // Convert port string to integer
@@ -774,7 +774,7 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
     char *port_str = strtok_r(NULL, "\n", &saveptr);
 
     if (!ss_ip || !port_str) {
-        fprintf(stderr, "Invalid response received from naming server.\n");
+        fprintf(stderr, "\"%s\": response received from naming server.\n", response);
         return -1;
     }
     ss_portnum = atoi(port_str);     // Convert port string to integer
