@@ -340,7 +340,14 @@ void handle_delete_request(int client_socket, int client_req_id, char *content, 
     // check for last character being "\n"
     // check if it is a valid path
     // check if it is a file, if it is then send delete request to the three (or how many ever) storage servers it is stored in
-    // if it is a folder, find all the files under it in the trie, then send delete request to each of the storage servers for each of the files, then delete each folder from the trie
+    // if it is a folder, find all the files under it in the trie, then send delete request for each of the files, then delete each folder from the trie
+}
+
+void handle_copy_request(int client_socket, int client_req_id, char *content, long content_length){
+    // check for last character being "\n"
+    // check if it is a valid path
+    // check if it is a file, if it is then send copy request to the three (or how many ever) storage servers along with the ssip and port number for the ss to copy it from, along with last modified time
+    // if it is a folder, find all the files under it in the trie, then send copy request for each of the files. for each of them insert an entry in the trie, once it is successfully copied to all three backup storage servers
 }
 
 void handle_info_request(int client_socket, int client_req_id, char *content, long content_length)
