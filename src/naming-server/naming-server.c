@@ -13,7 +13,7 @@ int global_req_id = 1;
 pthread_mutex_t trie_mutex; // Mutex to protect trie operations
 
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length);
-int delete_file(const char *path, FileEntry *entry);
+int delete_file(const char *path, FileEntry *entry, int client_req_id);
 int send_success(int client_socket, int client_req_id, char *message);
 void list_paths(TrieNode *node, const char *base_path, char **output, size_t *output_length);
 int connect_to_storage_server(const char *ip_address, int port);
@@ -211,7 +211,7 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
     fprintf(stderr, "Handled rws request %d %s %ld %c\n", client_req_id, content, content_length, request_type);
 }
 
-int delete_directory(const char *path)
+int delete_directory(const char *path, int client_req_id)
 {
     // Use existing collect_paths function to gather all paths under the directory
     char *response_content = NULL;
@@ -265,7 +265,7 @@ int delete_directory(const char *path)
         if (entry->is_folder == 0)
         {
             // It's a file
-            if (delete_file(paths[i], entry) < 0)
+            if (delete_file(paths[i], entry, client_req_id) < 0)
             {
                 result = -1;
             }
@@ -292,8 +292,9 @@ int delete_directory(const char *path)
     return result;
 }
 
-int delete_file(const char *path, FileEntry *entry)
+int delete_file(const char *path, FileEntry *entry, int client_req_id)
 {
+    int storage_req_id = client_req_id;
     int success_count = 0;
 
     // Send delete request to all storage servers that have the file
@@ -316,9 +317,7 @@ int delete_file(const char *path, FileEntry *entry)
         char header[31] = {0};
         char req_id_str[10];
         char content_length_str[21];
-        pthread_mutex_lock(&global_req_id_mutex);
-        int storage_req_id = global_req_id++;
-        pthread_mutex_unlock(&global_req_id_mutex);
+
         snprintf(req_id_str, sizeof(req_id_str), "%09d", storage_req_id);
         snprintf(content_length_str, sizeof(content_length_str), "%020ld", strlen(path) + 1);
 
@@ -465,7 +464,7 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             // generate new content length that is length of filepath + new line + timestamp size  using strnc
 
             // set global request id to req_id_str use strncpy, convert global_req_id to string
-            snprintf(req_id_str, sizeof(req_id_str), "%09d", global_req_id);
+            snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
             fprintf(stderr, "req_id_str: %s\n", req_id_str);
 
             header[0] = operation_type;
@@ -613,12 +612,12 @@ void handle_delete_request(int client_socket, int client_req_id, char *content, 
     if (entry->is_folder == 0)
     {
         // It's a file
-        result = delete_file(path, entry);
+        result = delete_file(path, entry, client_req_id);
     }
     else
     {
         // It's a directory
-        result = delete_directory(path);
+        result = delete_directory(path, client_req_id);
     }
 
     if (result < 0)
