@@ -122,6 +122,160 @@ void signal_handler(int sig)
     exit(0);
 }
 
+void handle_rws_request(int client_socket, int client_req_id, char *content, long content_length, char request_type)
+{
+    char *path_buffer = malloc(content_length + 1);
+    if (path_buffer == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for data buffer\n");
+        close(client_socket);
+        return;
+    }
+    int total_read = 0;
+    fprintf(stderr, "content_length: %ld\n", content_length);
+    fprintf(stderr, "content: %s\n", content);
+
+    FileEntry* file = search_path(content, root);
+    if (file== NULL)
+    {
+        fprintf(stderr, "path not found\n");
+        send_error_response(client_socket, client_req_id, "path not found\n");
+    }
+    else
+    {
+        // Get storage server information
+        int id = file->ss_ids[0];
+        StorageServerInfo ss_info = storage_servers[id];
+        // Prepare response content with IP and Port
+        char response_content[256];
+        snprintf(response_content, sizeof(response_content), "%s\n%d\n", ss_info.ip_address, ss_info.port);
+        size_t response_content_length = strlen(response_content);
+
+        // Prepare header
+        char header[31]; // 30 bytes + null terminator
+        char req_id_str[10];
+        char content_length_str[21];
+
+        snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
+        snprintf(content_length_str, sizeof(content_length_str), "%020zu", response_content_length);
+
+        header[0] = '0'; // Acknowledgment byte indicating success
+        strncpy(&header[1], req_id_str, 9);
+        strncpy(&header[10], content_length_str, 20);
+        header[30] = '\0';
+
+        // Send header and content to client
+        if (write_n_bytes(client_socket, header, 30) != 30 ||
+            write_n_bytes(client_socket, response_content, response_content_length) != (ssize_t)response_content_length)
+        {
+            fprintf(stderr, "Failed to send response to client\n");
+            close(client_socket);
+            free(path_buffer);
+            return;
+        }
+        fprintf(stderr, "Sent storage server info to client: IP=%s, Port=%d\n", ss_info.ip_address, ss_info.port);
+    }
+
+    free(path_buffer);
+    fprintf(stderr, "Handled rws request %d %s %ld %c\n", client_req_id, content, content_length, request_type);
+}
+
+void handle_create_request(int client_socket, int client_req_id, char *content, long content_length)
+{
+    pthread_mutex_lock(&global_req_id_mutex);
+    int storage_req_id = global_req_id++;
+    pthread_mutex_unlock(&global_req_id_mutex);
+    client_req_id = storage_req_id;
+
+    // Parse content into folderpath and name
+    char *folderpath = (char *)malloc(content_length + 1);
+    char *name = (char *)malloc(content_length + 1);
+    fprintf(stderr, "content: %s\n", content);
+
+    char *saveptr;
+    char *exist_folder = strtok_r(content, "\n", &saveptr);
+    fprintf(stderr, "exist_folder: %s\n", exist_folder);
+
+    FileEntry *file = search_path(exist_folder, root);
+    if (file == NULL)
+    {
+        fprintf(stderr, "Folder does not exist\n");
+        send_error_response(client_socket, client_req_id, "Error: Folder does not exist\n");
+        return;
+    }
+    else
+    {
+
+        fprintf(stderr, "Folder exists\n");
+
+        char *to_create = strtok_r(NULL, "\n", &saveptr);
+        fprintf(stderr, "to_create: %s\n", to_create);
+        if (to_create[strlen(to_create) - 1] == '/')
+        {
+            int storage_server_ids[3];
+            int num_chosen = 0;
+            choose_least_full_servers(storage_server_ids, &num_chosen);
+            insert_path(to_create, storage_server_ids, num_chosen, root);
+        }
+        else
+        {
+            char file_path[4096];
+            snprintf(file_path, sizeof(file_path), "%s/%s", folderpath, name);
+            char header[31]; // 30 bytes + null terminator
+            char req_id_str[10];
+            char content_length_str[21];
+            char operation_type = '6';               // '6' for CREATE
+            int path_length = strlen(file_path) + 1; // Include null terminator
+            // send 30 bytes header: 1 byte operation type, 9 bytes request id, 20 bytes content length
+            snprintf(req_id_str, sizeof(req_id_str), "%09d", global_req_id);
+            snprintf(content_length_str, sizeof(content_length_str), "%020ld", path_length);
+            snprintf(header, sizeof(header), "%c%s%s", operation_type, req_id_str, content_length_str);
+            // send request to the 3 storage servers of the file entry
+            for(int i=0; i<3;i++)
+            {
+                // send request to storage server
+                // send header along file path to the storage server
+                int ssid = file->ss_ids[i];
+                StorageServerInfo ss_info = storage_servers[ssid];
+                // connect to storage server using IP and Port in the ssinfo using connect and sockaddr
+                struct sockaddr_in storage_server_addr;
+                storage_server_addr.sin_family = AF_INET;
+                storage_server_addr.sin_port = htons(ss_info.port);
+                storage_server_addr.sin_addr.s_addr = inet_addr(ss_info.ip_address);
+                int storage_server_socket = socket(AF_INET, SOCK_STREAM, 0);
+                // connect 
+                if (storage_server_socket < 0)
+                {
+                    fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
+                    send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
+                    return;
+                }
+                if(connect(storage_server_socket, (struct sockaddr *)&storage_server_addr, sizeof(storage_server_addr)) < 0)
+                {
+                    fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
+                    send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
+                    return;
+                }
+
+                if (write_n_bytes(storage_server_socket, header, 30) != 30 ||
+                    write_n_bytes(storage_server_socket, file_path, path_length) != (ssize_t)path_length)
+                {
+                    fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
+                    send_error_response(client_socket, client_req_id, "Failed to send request to storage server\n");
+                    close(storage_server_socket);
+                    return;
+                }
+                close(storage_server_socket);
+            }
+        }
+    }
+    // Prepare header
+
+    // send header along file path to the storage server
+
+    // char *content_copy = strdup(content);
+}
+
 // Register a Storage Server
 int register_storage_server(const char *ip, int port_c, int port_ns)
 {
@@ -468,158 +622,8 @@ void handle_client(int client_socket, char initial_request_type)
     free(content);
 }
 
-void handle_create_request(int client_socket, int client_req_id, char *content, long content_length)
-{
-    pthread_mutex_lock(&global_req_id_mutex);
-    int storage_req_id = global_req_id++;
-    pthread_mutex_unlock(&global_req_id_mutex);
-    client_req_id = storage_req_id;
 
-    // Parse content into folderpath and name
-    char *folderpath = (char *)malloc(content_length + 1);
-    char *name = (char *)malloc(content_length + 1);
-    fprintf(stderr, "content: %s\n", content);
 
-    char *saveptr;
-    char *exist_folder = strtok_r(content, "\n", &saveptr);
-    fprintf(stderr, "exist_folder: %s\n", exist_folder);
-
-    FileEntry *file = search_path(exist_folder, root);
-    if (file == NULL)
-    {
-        fprintf(stderr, "Folder does not exist\n");
-        send_error_response(client_socket, client_req_id, "Error: Folder does not exist\n");
-        return;
-    }
-    else
-    {
-
-        fprintf(stderr, "Folder exists\n");
-
-        char *to_create = strtok_r(NULL, "\n", &saveptr);
-        fprintf(stderr, "to_create: %s\n", to_create);
-        if (to_create[strlen(to_create) - 1] == '/')
-        {
-            int storage_server_ids[3];
-            int num_chosen = 0;
-            choose_least_full_servers(storage_server_ids, &num_chosen);
-            insert_path(to_create, storage_server_ids, num_chosen, root);
-        }
-        else
-        {
-            char file_path[4096];
-            snprintf(file_path, sizeof(file_path), "%s/%s", folderpath, name);
-            char header[31]; // 30 bytes + null terminator
-            char req_id_str[10];
-            char content_length_str[21];
-            char operation_type = '6';               // '6' for CREATE
-            int path_length = strlen(file_path) + 1; // Include null terminator
-            // send 30 bytes header: 1 byte operation type, 9 bytes request id, 20 bytes content length
-            snprintf(req_id_str, sizeof(req_id_str), "%09d", global_req_id);
-            snprintf(content_length_str, sizeof(content_length_str), "%020ld", path_length);
-            snprintf(header, sizeof(header), "%c%s%s", operation_type, req_id_str, content_length_str);
-            // send request to the 3 storage servers of the file entry
-            for(int i=0; i<3;i++)
-            {
-                // send request to storage server
-                // send header along file path to the storage server
-                int ssid = file->ss_ids[i];
-                StorageServerInfo ss_info = storage_servers[ssid];
-                // connect to storage server using IP and Port in the ssinfo using connect and sockaddr
-                struct sockaddr_in storage_server_addr;
-                storage_server_addr.sin_family = AF_INET;
-                storage_server_addr.sin_port = htons(ss_info.port);
-                storage_server_addr.sin_addr.s_addr = inet_addr(ss_info.ip_address);
-                int storage_server_socket = socket(AF_INET, SOCK_STREAM, 0);
-                // connect 
-                if (storage_server_socket < 0)
-                {
-                    fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
-                    send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
-                    return;
-                }
-                if(connect(storage_server_socket, (struct sockaddr *)&storage_server_addr, sizeof(storage_server_addr)) < 0)
-                {
-                    fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
-                    send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
-                    return;
-                }
-
-                if (write_n_bytes(storage_server_socket, header, 30) != 30 ||
-                    write_n_bytes(storage_server_socket, file_path, path_length) != (ssize_t)path_length)
-                {
-                    fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
-                    send_error_response(client_socket, client_req_id, "Failed to send request to storage server\n");
-                    close(storage_server_socket);
-                    return;
-                }
-                close(storage_server_socket);
-            }
-        }
-    }
-    // Prepare header
-
-    // send header along file path to the storage server
-
-    // char *content_copy = strdup(content);
-}
-
-void handle_rws_request(int client_socket, int client_req_id, char *content, long content_length, char request_type)
-{
-    char *path_buffer = malloc(content_length + 1);
-    if (path_buffer == NULL)
-    {
-        fprintf(stderr, "Failed to allocate memory for data buffer\n");
-        close(client_socket);
-        return NULL;
-    }
-    int total_read = 0;
-    fprintf(stderr, "content_length: %ld\n", content_length);
-    fprintf(stderr, "content: %s\n", content);
-
-    int id = search_path(content, root);
-    if (id < 0)
-    {
-        fprintf(stderr, "path not found\n");
-        send_error_response(client_socket, client_req_id, "path not found\n");
-    }
-    else
-    {
-        // Get storage server information
-        StorageServerInfo ss_info = storage_servers[id];
-        // Prepare response content with IP and Port
-        char response_content[256];
-        snprintf(response_content, sizeof(response_content), "%s\n%d\n", ss_info.ip_address, ss_info.port);
-        size_t response_content_length = strlen(response_content);
-
-        // Prepare header
-        char header[31]; // 30 bytes + null terminator
-        char req_id_str[10];
-        char content_length_str[21];
-
-        snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
-        snprintf(content_length_str, sizeof(content_length_str), "%020zu", response_content_length);
-
-        header[0] = '0'; // Acknowledgment byte indicating success
-        strncpy(&header[1], req_id_str, 9);
-        strncpy(&header[10], content_length_str, 20);
-        header[30] = '\0';
-
-        // Send header and content to client
-        if (write_n_bytes(client_socket, header, 30) != 30 ||
-            write_n_bytes(client_socket, response_content, response_content_length) != (ssize_t)response_content_length)
-        {
-            fprintf(stderr, "Failed to send response to client\n");
-            close(client_socket);
-            free(path_buffer);
-            return;
-        }
-        fprintf(stderr, "Sent storage server info to client: IP=%s, Port=%d\n", ss_info.ip_address, ss_info.port);
-    }
-
-    free(path_buffer);
-    fprintf(stderr, "Handled rws request %d %s %ld %c\n", client_req_id, content, content_length, request_type);
-}
 
 void *accept_connections(void *arg)
 {

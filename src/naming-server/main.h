@@ -124,7 +124,7 @@ int register_storage_server(const char *ip, int port_c, int port_ns);
 void handle_client(int client_socket, char initial_request_type);
 void signal_handler(int sig);
 TrieNode *create_trie_node();
-TrieNode* search_path(const char *path, TrieNode *root);
+FileEntry* search_path(const char *path, TrieNode *root);
 FileEntry* insert_path(const char *path, int *storage_server_ids, int num_chosen, TrieNode *root);
 void save_trie(const char *filename, TrieNode *root);
 void load_trie(const char *filename, TrieNode *root);
