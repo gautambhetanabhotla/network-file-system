@@ -10,7 +10,7 @@ extern int nm_sockfd;
 #define MAXFILENAMELENGTH 256
 
 enum request_type {
-    READ = 1, WRITE, STREAM, INFO, LIST, CREATE, COPY, DELETE, SYNC, HELLO, CREATED
+    READ = 1, WRITE, STREAM, INFO, LIST, CREATE, COPY, DELETE, SYNC, HELLO, SYNC_BACK
 };
 
 enum exit_status {
