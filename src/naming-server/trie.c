@@ -21,7 +21,10 @@ FileEntry* insert_path(const char *path, int *storage_server_ids, int num_chosen
     TrieNode *current = root;
     for (int i = 0; path[i]; i++)
     {
-        if(current->file_entry && current->file_entry->is_folder==0)
+        if(current == NULL){
+            return NULL;
+        }
+        if(current->file_entry && (current->file_entry->is_folder==0))
         {
             return NULL;
         }
