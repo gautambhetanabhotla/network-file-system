@@ -11,7 +11,7 @@ int round_robin_counter = 0;
 pthread_mutex_t global_req_id_mutex; // Mutex to protect global request ID
 int global_req_id = 1;
 pthread_mutex_t trie_mutex; // Mutex to protect trie operations
-
+clientData request_array[MAX_CLIENTS];
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length);
 
 // function to look for a path in the cache and then in the trie
@@ -64,6 +64,9 @@ ssize_t read_n_bytes(int socket_fd, void *buffer, size_t n)
 {
     size_t total_read = 0;
     char *buf = (char *)buffer;
+    time_t start_time = time(NULL);
+    int timeout_seconds = 5;
+
     while (total_read < n)
     {
         fprintf(stderr, "total_read: %ld, n: %ld\n", total_read, n);
@@ -79,7 +82,18 @@ ssize_t read_n_bytes(int socket_fd, void *buffer, size_t n)
             fprintf(stderr, "Connection closed by peer\n");
             return -1;
         }
-        total_read += bytes_read;
+        else
+        {
+            total_read += bytes_read;
+            start_time = time(NULL); // Reset timer on successful read
+        }
+
+        // Check for timeout
+        if (difftime(time(NULL), start_time) > timeout_seconds)
+        {
+            fprintf(stderr, "Timeout while reading from socket\n");
+            return -1;
+        }
     }
     return total_read;
 }
@@ -375,7 +389,6 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
 
 
 
-
 void handle_delete_request(int client_socket, int client_req_id, char *content, long content_length){
     // check for last character being "\n"
     // check if it is a valid path
@@ -384,7 +397,6 @@ void handle_delete_request(int client_socket, int client_req_id, char *content, 
     // delete '/' (home) should not be allowed
     // also after deleting from all the storage servers, delete the entry from the trie
 }
-
 
 void handle_copy_request(int client_socket, int client_req_id, char *content, long content_length){
     
@@ -1020,20 +1032,39 @@ void *handle_connection(void *arg)
             }
             header[30] = '\0';
             // Parse header fields
-            char request_type;
+            char exit_status;
             char req_id_str[10];
             char content_length_str[21];
-            request_type = header[0];
+            exit_status = header[0];
             strncpy(req_id_str, &header[1], 9);
             req_id_str[9] = '\0';
+            int req_id = atoi(req_id_str);
+            int req_type = request_array[req_id].req_id;
             strncpy(content_length_str, &header[10], 20);
             content_length_str[20] = '\0';
             int content_length = atoi(content_length_str);
-            fprintf(stderr, "Received request from storage server\n");
-            fprintf(stderr, "request type: %c\n", request_type);
-            fprintf(stderr, "request id: %s\n", req_id_str);
-            fprintf(stderr, "content length: %d\n", content_length);
 
+            if (content_length > 0)
+            {
+                // read content from storage server
+                fprintf(stderr, "error : content_length: %d\n", content_length);
+                char *content = malloc(content_length + 1);
+                if (!content)
+                {
+                    fprintf(stderr, "Failed to allocate memory for content\n");
+                    close(client_socket);
+                    return NULL;
+                }
+                bytes_received = read_n_bytes(client_socket, content, content_length);
+                if (bytes_received != content_length)
+                {
+                    fprintf(stderr, "Failed to read content from storage server\n");
+                    free(content);
+                    close(client_socket);
+                    return NULL;
+                }
+                content[content_length] = '\0';
+                fprintf(stderr, "content: %s\n", content);
             // read content from storage server
             char *content = malloc(content_length + 1);
             if (!content)
@@ -1042,11 +1073,113 @@ void *handle_connection(void *arg)
                 // close(client_socket);
                 return NULL;
             }
-            bytes_received = read_n_bytes(client_socket, content, content_length);
-            if (bytes_received != content_length)
+            else
             {
-                fprintf(stderr, "Failed to read content from storage server\n");
+
+                // send header back to the client with a content sending a success or failure message from the combination of request type and error code enum
+                // Prepare header
+                char response_header[31]; // 30 bytes + null terminator
+                char req_id_str[10];
+                char content_length_str[21];
+                strncpy(&response_header[0], exit_status, 1);
+                strncpy(&response_header[1], req_id_str, 9);
+                int content_len = 0;
+                char str1[30];
+                char str2[30];
+
+                // use the request_type and exit_status enum to generate content message
+                // each switch case generates a different message
+                // send the message back to the client
+                switch (req_id)
+                {
+                case READ:
+                    strncpy(str1, "READ request:", strlen("READ request:"));
+                    content_len += strlen("READ request:");
+                    break;
+                case WRITE:
+                    strncpy(str1, "WRITE request:", strlen("WRITE request:"));
+                    content_len += strlen("WRITE request:");
+                    break;
+                case STREAM:
+                    strncpy(str1, "STREAM request:", strlen("STREAM request:"));
+                    content_len += strlen("STREAM request:");
+                    break;
+                case INFO:
+                    strncpy(str1, "INFO request:", strlen("INFO request:"));
+                    content_len += strlen("INFO request:");
+                    break;
+                case LIST:
+                    strncpy(str1, "LIST request:", strlen("LIST request:"));
+                    content_len += strlen("LIST request:");
+                    break;
+                case CREATE:
+                    strncpy(str1, "CREATE request:", strlen("CREATE request:"));
+                    content_len += strlen("CREATE request:");
+                    break;
+                case COPY:
+                    strncpy(str1, "COPY request:", strlen("COPY request:"));
+                    content_len += strlen("COPY request:");
+                    break;
+                case DELETE:
+                    strncpy(str1, "DELETE request:", strlen("DELETE request:"));
+                    content_len += strlen("DELETE request:");
+                    break;
+                default:
+                    break;
+                }
+
+                switch (exit_status)
+                {
+                case SUCCESS:
+                    strncpy(str2, "SUCCESS", strlen("SUCCESS"));
+                    content_len += strlen("SUCCESS");
+                    break;
+                case ACK:
+                    strncpy(str2, "ACK", strlen("ACK"));
+                    content_len += strlen("ACK");
+                    break;
+                case E_FILE_DOESNT_EXIST:
+                    strncpy(str2, "E_FILE_DOESNT_EXIST", strlen("E_FILE_DOESNT_EXIST"));
+                    content_len += strlen("E_FILE_DOESNT_EXIST");
+                    break;
+                case E_FILE_ALREADY_EXISTS:
+                    strncpy(str2, "E_FILE_ALREADY_EXISTS", strlen("E_FILE_ALREADY_EXISTS"));
+                    content_len += strlen("E_FILE_ALREADY_EXISTS");
+                    break;
+                case E_INCOMPLETE_WRITE:
+                    strncpy(str2, "E_INCOMPLETE_WRITE", strlen("E_INCOMPLETE_WRITE"));
+                    content_len += strlen("E_INCOMPLETE_WRITE");
+                    break;
+                case E_FAULTY_SS:
+                    strncpy(str2, "E_FAULTY_SS", strlen("E_FAULTY_SS"));
+                    content_len += strlen("E_FAULTY_SS");
+                    break;
+                case E_WRONG_SS:
+                    strncpy(str2, "E_WRONG_SS", strlen("E_WRONG_SS"));
+                    content_len += strlen("E_WRONG_SS");
+                    break;
+                default:
+                    break;
+                }
+
+                // join str1 and str2 to get the final message, separated by space
+                snprintf(content_length_str, sizeof(content_length_str), "%ld", content_len);
+                char content[content_len];
+                snprintf(content, content_len, "%s %s", str1, str2);
+                int client_socket = request_array[req_id].client_socket;
+                // Prepare header
+                strncpy(&response_header[10], content_length_str, 20);
+                response_header[30] = '\0';
+                // send header and content to the client using client socket
+                if (write_n_bytes(client_socket, response_header, 30) != 30 ||
+                    write_n_bytes(client_socket, content, content_len) != (ssize_t)content_len)
+                {
+                    fprintf(stderr, "Failed to send response to client\n");
+                    free(content);
+                    return NULL;
+                }
                 free(content);
+            }
                 // close(client_socket);
                 return NULL;
             }
@@ -1131,6 +1264,18 @@ void handle_client(int client_socket, char initial_request_type)
         content[content_length] = '\0';
         fprintf(stderr, "content: %s\n", content);
 
+    pthread_mutex_lock(&global_req_id_mutex);
+    int storage_req_id = global_req_id++;
+    request_array[storage_req_id].req_id = request_type;
+    request_array[storage_req_id].client_socket = client_socket;
+    FILE *fd = fopen("requests.txt", "a");
+    if (fd == NULL)
+    {
+        perror("Error opening requests.txt");
+        free(content);
+        pthread_mutex_unlock(&global_req_id_mutex);
+        return;
+    }
 
         pthread_mutex_lock(&global_req_id_mutex);
         int storage_req_id = global_req_id++;

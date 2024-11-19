@@ -74,6 +74,19 @@ typedef struct {
 } ClientRequest;
 
 
+// enum 
+enum request_type {
+    READ = 1, WRITE, STREAM, INFO, LIST, CREATE, COPY, DELETE, SYNC, HELLO, CREATED
+};
+
+enum exit_status {
+    SUCCESS, ACK, E_FILE_DOESNT_EXIST, E_INCOMPLETE_WRITE, E_FILE_ALREADY_EXISTS, E_WRONG_SS, E_FAULTY_SS
+};
+
+typedef struct clientData{
+    int client_socket;
+    int req_id;
+}clientData;
 
 
 // Cache Node Structure for LRU Cache
@@ -114,7 +127,7 @@ extern struct lru_cache *cache; // Cache pointer
 extern sem_t storage_server_sem;                 // Semaphore to track storage servers
 extern pthread_mutex_t storage_server_mutex;     // Mutex to protect storage_server_count
 extern int round_robin_counter;
-
+extern clientData request_array[MAX_CLIENTS];
 // Function Declarations
 void *storage_server_handler(void *arg);
 void *client_handler(void *arg);
