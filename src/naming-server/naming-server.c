@@ -11,6 +11,7 @@ int round_robin_counter = 0;
 pthread_mutex_t global_req_id_mutex; // Mutex to protect global request ID
 int global_req_id = 1;
 pthread_mutex_t trie_mutex; // Mutex to protect trie operations
+request_array[MAX_CLIENTS] = {0};
 
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length);
 
@@ -696,6 +697,7 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
     pthread_mutex_unlock(&storage_server_mutex);
 }
 
+
 void * handle_connection(void *arg)
 {
     int client_socket = *(int *)arg;
@@ -897,39 +899,87 @@ void * handle_connection(void *arg)
             }
             header[30] = '\0';
             // Parse header fields
-            char request_type;
+            char exit_status;
             char req_id_str[10];
             char content_length_str[21];
-            request_type = header[0];
+            exit_status = header[0];
             strncpy(req_id_str, &header[1], 9);
             req_id_str[9] = '\0';
+            int req_id = atoi(req_id_str);
+            int req_type = request_array[req_id];
             strncpy(content_length_str, &header[10], 20);
             content_length_str[20] = '\0';
             int content_length = atoi(content_length_str);
-            fprintf(stderr, "Received request from storage server\n");
-            fprintf(stderr, "request type: %c\n", request_type);
-            fprintf(stderr, "request id: %s\n", req_id_str);
-            fprintf(stderr, "content length: %d\n", content_length);
+
+            if(content_length>0){
+                // read content from storage server
+                fprintf(stderr, "error : content_length: %d\n", content_length);
+                char *content = malloc(content_length + 1);
+                if (!content)
+                {
+                    fprintf(stderr, "Failed to allocate memory for content\n");
+                    close(client_socket);
+                    return NULL;
+                }
+                bytes_received = read_n_bytes(client_socket, content, content_length);
+                if (bytes_received != content_length)
+                {
+                    fprintf(stderr, "Failed to read content from storage server\n");
+                    free(content);
+                    close(client_socket);
+                    return NULL;
+                }
+                content[content_length] = '\0';
+                fprintf(stderr, "content: %s\n", content); 
+            }else{
+
+                // send header back to the client with a content sending a success or failure message from the combination of request type and error code enum
+                // Prepare header
+                char response_header[31]; // 30 bytes + null terminator
+                char req_id_str[10];
+                char content_length_str[21];
+                strncpy(exit_status, &response_header[0], 1);
+                strncpy(req_id_str, &response_header[1], 9);
+                int content_len = 20;
+
+                // use the request_type and exit_status enum to generate content message
+                // each switch case generates a different message
+                // send the message back to the client
+                switch(req_id){
+                    case READ:
+                        strncpy(content, "READ request successful", 23);
+                        break;
+                    case WRITE:
+                        content_len+=5;
+                        break;
+                    case CREATE:
+                        content_len+=6;
+                        break;
+                    case DELETE:
+                        content_len+=6;
+                        break;
+                    case STREAM:
+                        content_len+=6;
+                        break;
+                    case COPY:
+                        content_len+=4;
+                        break;
+                    case INFO:
+                        content_len+=4;
+                        break;                  
+                    default:
+                        break;
+                }
 
 
-            // read content from storage server
-            char *content = malloc(content_length + 1);
-            if (!content)
-            {
-                fprintf(stderr, "Failed to allocate memory for content\n");
-                close(client_socket);
-                return NULL;
+
+                
+                
+
             }
-            bytes_received = read_n_bytes(client_socket, content, content_length);
-            if (bytes_received != content_length)
-            {
-                fprintf(stderr, "Failed to read content from storage server\n");
-                free(content);
-                close(client_socket);
-                return NULL;
-            }
-            content[content_length] = '\0';
-            fprintf(stderr, "content: %s\n", content);    
+
+
+               
         }
     }
     else
@@ -1006,6 +1056,8 @@ void handle_client(int client_socket, char initial_request_type)
     
     pthread_mutex_lock(&global_req_id_mutex);
     int storage_req_id = global_req_id++;
+    request_array[storage_req_id] = atoi(initial_request_type);
+    fprintf(stderr, "global_req_id stored in index %d: and value %d\n", storage_req_id, request_array[storage_req_id]);
     FILE * fd = open("requests.txt", O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd < 0) {
         perror("Error opening requests.txt");
