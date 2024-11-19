@@ -129,6 +129,8 @@ extern pthread_mutex_t storage_server_mutex;     // Mutex to protect storage_ser
 extern int round_robin_counter;
 extern clientData request_array[MAX_CLIENTS];
 // Function Declarations
+
+TrieNode* search_folder(const char *path, TrieNode *root);
 void *storage_server_handler(void *arg);
 void *client_handler(void *arg);
 void initialize_naming_server(int ss_reg_port, int client_req_port);
