@@ -18,7 +18,61 @@ int send_success(int client_socket, int client_req_id, char *message);
 void list_paths(TrieNode *node, const char *base_path, char **output, size_t *output_length);
 int connect_to_storage_server(const char *ip_address, int port);
 
-// function to look for a path in the cache and then in the trie
+TrieNode *search_trie_node(const char *path, TrieNode *root)
+{
+    TrieNode *current_node = root;
+    const char *p = path;
+
+    while (*p)
+    {
+        // Skip multiple slashes
+        while (*p == '/')
+            p++;
+
+        if (*p == '\0')
+            break;
+
+        // Extract the next component of the path
+        char name[MAX_FILENAME_LENGTH];
+        int i = 0;
+        while (*p != '/' && *p != '\0' && i < MAX_FILENAME_LENGTH - 1)
+        {
+            name[i++] = *p;
+            p++;
+        }
+        name[i] = '\0';
+
+        // Traverse to the next node
+        if (current_node->children[(unsigned char)name[0]])
+        {
+            current_node = current_node->children[(unsigned char)name[0]];
+            // Continue matching the rest of the name
+            for (int j = 1; name[j] != '\0'; j++)
+            {
+                if (current_node->children[(unsigned char)name[j]])
+                {
+                    current_node = current_node->children[(unsigned char)name[j]];
+                }
+                else
+                {
+                    return NULL;
+                }
+            }
+
+            // Check if the node represents the complete name
+            if (current_node->file_entry == NULL || strcmp(current_node->file_entry->filename, name) != 0)
+            {
+                return NULL;
+            }
+        }
+        else
+        {
+            return NULL;
+        }
+    }
+
+    return current_node;
+}
 
 
 // Helper function to write n bytes to a socket
@@ -924,7 +978,7 @@ void handle_list_request(int client_socket, int client_req_id, char *content, lo
     folder_path[content_length] = '\0';
 
     // 1. Determine whether the folder exists
-    TrieNode *folder_node = search_path(folder_path, root);
+    TrieNode *folder_node = search_trie_node(folder_path, root);
     if (folder_node == NULL)
     {
         send_error_response(client_socket, client_req_id, "Error: Folder does not exist\n");
