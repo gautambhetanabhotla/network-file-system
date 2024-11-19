@@ -377,6 +377,8 @@ void handle_info_request(int client_socket, int client_req_id, char *content, lo
     // Get storage server info (use the first available server)
     for (int i = 0; i<3; i++){
         int ssid = file->ss_ids[i];
+        if (ssid<0)
+            continue;
         StorageServerInfo ss_info = storage_servers[ssid];
 
         // Prepare header for storage server
