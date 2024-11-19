@@ -16,13 +16,26 @@ TrieNode *create_trie_node()
 
 FileEntry* insert_path(const char *path, int *storage_server_ids, int num_chosen, TrieNode *root)
 {
+    // need to make sure that when a file/directory is added, the parent is also a directory
+
     TrieNode *current = root;
     for (int i = 0; path[i]; i++)
     {
+        if(current->file_entry && current->file_entry->is_folder==0)
+        {
+            return NULL;
+        }
         unsigned char index = (unsigned char)path[i];
-        if (!current->children[index])
+        // need to check if the parent is a directory
+        if (!current->children[index] && current->file_entry->is_folder==0)
             current->children[index] = create_trie_node();
         current = current->children[index];
+    }
+
+    if (current->file_entry)
+    {
+        // File already exists
+        return current->file_entry;
     }
     if (!current->file_entry)
     {
@@ -35,6 +48,7 @@ FileEntry* insert_path(const char *path, int *storage_server_ids, int num_chosen
             storage_servers[storage_server_ids[i]].file_count++;
         }
     }
+
     return current->file_entry;
 }
 
@@ -45,6 +59,10 @@ void set_file_entry_timestamp(FileEntry *file, const char *timestamp)
 
 FileEntry* search_path(const char *path, TrieNode *root)
 {
+    if (path[strlen(path) - 1] != '/')
+    {
+        // means it is a folder
+    }
     TrieNode *current = root;
     for (int i = 0; path[i]; i++)
     {
@@ -58,16 +76,7 @@ FileEntry* search_path(const char *path, TrieNode *root)
     return NULL; // Not found
 }
 
-void save_trie(const char *filename, TrieNode *root)
-{
-    FILE *file = fopen(filename, "wb");
-    if (!file)
-    {
-        perror("Failed to open trie data file for writing");
-        return;
-    }
-    // Recursively save trie nodes
-    void save_node(TrieNode * node, FILE * file)
+void save_node(TrieNode * node, FILE * file)
     {
         if (!node)
             return;
@@ -90,21 +99,21 @@ void save_trie(const char *filename, TrieNode *root)
             }
         }
     }
+
+void save_trie(const char *filename, TrieNode *root)
+{
+    FILE *file = fopen(filename, "wb");
+    if (!file)
+    {
+        perror("Failed to open trie data file for writing");
+        return;
+    }
+    // Recursively save trie nodes
+    
     save_node(root, file);
     fclose(file);
 }
-
-void load_trie(const char *filename, TrieNode *root)
-{
-    FILE *file = fopen(filename, "rb");
-    if (!file)
-    {
-        printf("Trie data file not found, starting with empty trie.\n");
-        return;
-    }
-    // Recursively load trie nodes
-    printf("Loading Trie from file...\n");
-    void load_node(TrieNode * node, FILE * file)
+void load_node(TrieNode * node, FILE * file)
     {
         uint8_t has_file_entry;
         fread(&has_file_entry, sizeof(uint8_t), 1, file);
@@ -125,6 +134,17 @@ void load_trie(const char *filename, TrieNode *root)
             }
         }
     }
+void load_trie(const char *filename, TrieNode *root)
+{
+    FILE *file = fopen(filename, "rb");
+    if (!file)
+    {
+        printf("Trie data file not found, starting with empty trie.\n");
+        return;
+    }
+    // Recursively load trie nodes
+    printf("Loading Trie from file...\n");
+    
     load_node(root, file);
     fclose(file);
 }
@@ -132,8 +152,8 @@ void load_trie(const char *filename, TrieNode *root)
 // Remove a path from the Trie
 void remove_path(const char *path, TrieNode *root) {
     TrieNode *current = root;
-    TrieNode *parent = NULL;
-    unsigned char last_index = 0;
+    //TrieNode *parent = NULL;
+    //unsigned char last_index = 0;
 
     // Stack to keep track of the path
     TrieNode *node_stack[MAX_PATH_LENGTH];
@@ -175,3 +195,4 @@ void remove_path(const char *path, TrieNode *root) {
         }
     }
 }
+
