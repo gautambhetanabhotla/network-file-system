@@ -17,9 +17,20 @@ TrieNode *create_trie_node()
 FileEntry* insert_path(const char *path, int *storage_server_ids, int num_chosen, TrieNode *root)
 {
     // need to make sure that when a file/directory is added, the parent is also a directory
-
     TrieNode *current = root;
-    for (int i = 0; path[i]; i++)
+    if(strlen(path)==1){
+        fprintf(stderr, "only one character, is it root?\n");
+        if(path[0]=='/'){
+            fprintf(stderr, "omg its root you go girl!\n");
+            return root->file_entry;
+        }
+    }else{
+        if(path[0]!='/'){
+            fprintf(stderr, "path does not start with /\n");
+            return NULL;
+        }
+    }
+    for (int i = 1; path[i]; i++)
     {
         if(current == NULL){
             return NULL;
@@ -30,7 +41,7 @@ FileEntry* insert_path(const char *path, int *storage_server_ids, int num_chosen
         }
         unsigned char index = (unsigned char)path[i];
         // need to check if the parent is a directory
-        if (!current->children[index] && current->file_entry->is_folder==0)
+        if (!current->children[index])
             current->children[index] = create_trie_node();
         current = current->children[index];
     }
