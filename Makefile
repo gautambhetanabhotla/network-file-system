@@ -17,7 +17,7 @@ build/storage-server: | build
 	mkdir build/storage-server
 
 build/client/%.o: src/client/%.c | build/client
-	$(CC) $(CFLAGS) -lao -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@ -lao
 
 build/naming-server/%.o: src/naming-server/%.c | build/naming-server
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -26,7 +26,7 @@ build/storage-server/%.o: src/storage-server/%.c | build/storage-server
 	$(CC) $(CFLAGS) -c $< -o $@
 
 c: $(patsubst src/client/%.c, build/client/%.o, $(wildcard src/client/*.c)) | build/client
-	$(CC) $(CFLAGS) -lao -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ -lao
 
 ns: $(patsubst src/naming-server/%.c, build/naming-server/%.o, $(wildcard src/naming-server/*.c)) | build/naming-server
 	$(CC) $(CFLAGS) -o $@ $^

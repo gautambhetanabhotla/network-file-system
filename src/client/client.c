@@ -943,8 +943,13 @@ int main(int argc, char* argv[]) {
     char request[BUFFER_SIZE];
     bool synchronous;
 
-    char serverip[] = "127.0.1.1";
-    int serverport = 8080;
+    if(argc != 3) {
+        fprintf(stderr, "Usage: %s <ip> <port>", argv[0]);
+        exit(1);
+    }
+
+    char* serverip = argv[1];
+    int serverport = atoi(argv[2]);
 
     int check  = ns_connect(serverip, serverport);
     if (check < 0){

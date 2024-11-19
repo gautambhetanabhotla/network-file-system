@@ -10,3 +10,4 @@ test.c
 *.swp
 *.out
 *.bin
+requests.txt
