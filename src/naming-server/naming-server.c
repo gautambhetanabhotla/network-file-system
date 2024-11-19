@@ -216,22 +216,29 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             int num_chosen = 0;
             choose_least_full_servers(storage_server_ids, &num_chosen);
             insert_path(to_create, storage_server_ids, num_chosen, root);
+
+            //NEEDS TO BE CHANGED ???
         }
         else
         {
             char file_path[4096];
-            snprintf(file_path, sizeof(file_path), "%s/%s", folderpath, name);
+            snprintf(file_path, sizeof(file_path), "%s%s", folderpath, name); // folder already exists and ends with /
             char header[31]; // 30 bytes + null terminator
             char req_id_str[10];
             char content_length_str[21];
+            memset(header, 0, sizeof(header));
+            memset(req_id_str, 0, sizeof(req_id_str));
+            memset(content_length_str, 0, sizeof(content_length_str));
             char operation_type = '6';               // '6' for CREATE
             int path_length = strlen(file_path) + 1; // Include null terminator
             // send 30 bytes header: 1 byte operation type, 9 bytes request id, 20 bytes content length
-            snprintf(req_id_str, sizeof(req_id_str), "%09d", global_req_id);
-            snprintf(content_length_str, sizeof(content_length_str), "%020ld", path_length);
-            snprintf(header, sizeof(header), "%c%s%s", operation_type, req_id_str, content_length_str);
+
+            header[0] = operation_type;
+            strncpy(&header[1], req_id_str, strlen(req_id_str));
+            strncpy(&header[10], content_length_str, strlen(content_length_str));
+            header[30] = '\0';
             // send request to the 3 storage servers of the file entry
-            for(int i=0; i<3;i++)
+            for(int i=0; i<3;i++)// what if there are less than 3 ???
             {
                 // send request to storage server
                 // send header along file path to the storage server
@@ -349,7 +356,7 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
     pthread_mutex_unlock(&storage_server_mutex);
 }
 
-void *handle_connection(void *arg)
+void * handle_connection(void *arg)
 {
     int client_socket = *(int *)arg;
     free(arg);
@@ -399,7 +406,7 @@ void *handle_connection(void *arg)
         int content_len = atoi(content_length);
 
         // Allocate buffer for data
-        char *data_buffer = malloc(content_len + 1);
+        char * data_buffer = malloc(content_len + 1);
         if (data_buffer == NULL)
         {
             fprintf(stderr, "Failed to allocate memory for data buffer\n");
@@ -409,24 +416,36 @@ void *handle_connection(void *arg)
 
         // Read DATA (CONTENT_LENGTH bytes) in a loop
         size_t total_bytes_read = 0;
-        while (total_bytes_read < content_len)
-        {
-            bytes_received = recv(client_socket, data_buffer + total_bytes_read, content_len - total_bytes_read, 0);
-            if (bytes_received <= 0)
-            {
-                fprintf(stderr, "Failed to read data\n");
-                free(data_buffer);
-                close(client_socket);
-                return NULL;
-            }
-            total_bytes_read += bytes_received;
+        // while (total_bytes_read < content_len)
+        // {
+        //     bytes_received = recv(client_socket, data_buffer + total_bytes_read, content_len - total_bytes_read, 0);
+        //     if (bytes_received <= 0)
+        //     {
+        //         fprintf(stderr, "Failed to read data\n");
+        //         free(data_buffer);
+        //         close(client_socket);
+        //         return NULL;
+        //     }
+        //     total_bytes_read += bytes_received;
+        // }
+        total_bytes_read = recv(client_socket, data_buffer, content_len, 0);
+
+        if (total_bytes_read < content_len){
+            fprintf(stderr, "Failed to read data\n");
+            free(data_buffer);
+            close(client_socket);
+            return NULL;
         }
         if(data_buffer[content_len-1]=='\0'){
             fprintf(stderr,"null character because");
         }
-        data_buffer[content_len-1] = '\0'; // Null-terminate the data
+        // data_buffer[content_len-1] = '\0'; // Null-terminate the data
         data_buffer[content_len] = '\0'; // Null-terminate the data
-        fprintf(stderr, "Received data: %s\n", data_buffer);
+        // fprintf(stderr, "Received data: %s\n", data_buffer);
+        for (int i = 0; i<content_len; i++){
+            fprintf(stderr, "%c", data_buffer[i]);            
+        }
+        fprintf(stderr, "\n");
 
         // Process the DATA
         // First 5 bytes are the port number
@@ -439,7 +458,7 @@ void *handle_connection(void *arg)
         char* remaining_data = data_buffer + 5;
         size_t remaining_length = content_len - 5;
         fprintf(stderr, "Remaining data: ");
-        for(int i=0;i<remaining_length;i++){
+        for(int i=0;i<sizeof(remaining_data);i++){
             if(remaining_data[i] =='\0'){
                 //fprintf(stderr,"null character");
                 remaining_data[i] = ' ';
@@ -456,7 +475,7 @@ void *handle_connection(void *arg)
         char* saveptr1;
         line = strtok_r(remaining_data, "\n", &saveptr1);
         fprintf(stderr, "saveptr: ");
-        for(int i=0; i< (remaining_length - strlen(line));i++)
+        for(int i=0; i<sizeof(saveptr1);i++)
         {
             fprintf(stderr,"%c",saveptr1[i]);
         }
