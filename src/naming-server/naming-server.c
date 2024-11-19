@@ -1144,12 +1144,11 @@ int main(int argc, char *argv[])
 
     // Set Options
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT,
-                   &opt, sizeof(opt)))
+                    &opt, sizeof(opt)))
     {
         perror("Setsockopt");
         exit(EXIT_FAILURE);
     }
-
     // Bind
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY; // Accept connections from any IP
