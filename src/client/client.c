@@ -312,14 +312,14 @@ int read_it(const char * filepath){
 
     ssize_t ns_bytes_received;
 
-    ns_bytes_received = recv(ns_socket, response, BUFFER_SIZE, 0);
-    response[ns_bytes_received] = '\0';
+    ns_bytes_received = recv(ns_socket, response, 30, 0);
     
     
-    if (ns_bytes_received < 30) {
+    if (ns_bytes_received != 30) {
         perror("Failed to receive response from naming server.\n");
         return -1;
     }
+    response[ns_bytes_received] = '\0';
     char content_length[20];
     memset(content_length, 0, sizeof(content_length));
     strncpy(content_length, &response[10], 20);
@@ -328,11 +328,20 @@ int read_it(const char * filepath){
         printf("Sorry, the file was not found or there was some other error in the (naming) server.\n");
         return -1;
     }
+    
 
     char reqid[9];
     memset(reqid, 0, sizeof(reqid));
     strncpy(reqid, &response[1], 9);
     int req_id = atoi(reqid);
+
+    ns_bytes_received = recv(ns_socket, response, atoi(content_length), 0);
+    response[ns_bytes_received] = '\0';
+
+    if (ns_bytes_received != atoi(content_length)) {
+        perror("Failed to receive response from naming server.\n");
+        return -1;
+    }
 
 
     
@@ -340,7 +349,7 @@ int read_it(const char * filepath){
     int ss_portnum;
     char * saveptr;
 
-    ss_ip = strtok_r(&response[30], "\n", &saveptr);
+    ss_ip = strtok_r(response, "\n", &saveptr);
     char *port_str = strtok_r(NULL, "\n", &saveptr);
 
     if (!ss_ip || !port_str) {
@@ -410,13 +419,13 @@ int read_it(const char * filepath){
 
     // Receive the 30-byte header
     ss_bytes_received = recv(ss_socket, length_buffer, 30, 0);
-    if (ss_bytes_received < 30) {
+    if (ss_bytes_received != 30) {
         perror("Failed to receive correct response from storage server\n");
         close(ss_socket);
         return -1;
     }
 
-    length_buffer[strlen(length_buffer)] = '\0'; // Null-terminate the length buffer
+    length_buffer[ss_bytes_received] = '\0'; // Null-terminate the length buffer
 
     data_length = atoi(&length_buffer[10]); // Convert the length to an integer
 
@@ -433,7 +442,7 @@ int read_it(const char * filepath){
     int num;
     while(1){
         // Receive the actual data
-        num = recv(ss_socket, data_buffer, BUFFER_SIZE - 1, 0);
+        num = recv(ss_socket, data_buffer, (data_length - ss_bytes_received) % (BUFFER_SIZE - 1), 0);
         if (num < 0){
             perror("Failed to receive complete data\n");
             break;
