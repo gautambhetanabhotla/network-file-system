@@ -61,6 +61,7 @@ FileEntry* insert_path(const char *path, int *storage_server_ids, int num_chosen
     {
         current->file_entry = (FileEntry *)malloc(sizeof(FileEntry));
         strcpy(current->file_entry->filename, path);
+        fprintf(stderr, "path: %s\n", current->file_entry->filename);
 
         for (int i = 0; i < num_chosen; i++)
         {

@@ -631,25 +631,20 @@ int stream(const char * filepath){
 
     ss_bytes_received = 0;
     int num;
-    while(1){
-        // Receive the actual data
-        num = recv(ss_socket, data_buffer, (data_length - ss_bytes_received) % (BUFFER_SIZE - 1), 0);
-        if (num < 0){
-            perror("Failed to receive complete data\n");
+
+    ss_bytes_received = 0;
+    while (ss_bytes_received < data_length) {
+        int remaining = data_length - ss_bytes_received;
+        int to_read = (remaining < BUFFER_SIZE) ? remaining : BUFFER_SIZE;
+        
+        num = recv(ss_socket, data_buffer, to_read, 0);
+        if (num <= 0) {
+            perror("Failed to receive audio data");
             break;
         }
-        if (num == 0){
-            perror("Failed to receive complete data, connection with storage server terminated.\n");
-            break;
-        }
-        ss_bytes_received += num;
-        if (ss_bytes_received == data_length) {
-            memset(&data_buffer[num], '\0', BUFFER_SIZE - num);
-            ao_play(device, data_buffer, num);
-            printf("\nSuccess! Data streamed wholly!\n");
-            break;
-        }
+        
         ao_play(device, data_buffer, num);
+        ss_bytes_received += num;
     }
 
     // Close the audio device and shutdown the AO library

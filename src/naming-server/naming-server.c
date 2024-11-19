@@ -15,7 +15,7 @@ pthread_mutex_t trie_mutex; // Mutex to protect trie operations
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length);
 int delete_file(const char *path, FileEntry *entry, int client_req_id);
 int send_success(int client_socket, int client_req_id, char *message);
-void list_paths(TrieNode *node, const char *base_path, char **output, size_t *output_length);
+void list_paths(TrieNode *node, const char *base_path, char ***output, size_t *output_length);
 int connect_to_storage_server(const char *ip_address, int port);
 
 clientData request_array[MAX_CLIENTS];
@@ -320,7 +320,6 @@ int delete_file(const char *path, FileEntry *entry, int client_req_id)
         char header[31] = {0};
         char req_id_str[10];
         char content_length_str[21];
-
 
         snprintf(req_id_str, sizeof(req_id_str), "%09d", storage_req_id);
         fprintf(stderr, "path length: %ld\n", strlen(path));
@@ -980,12 +979,9 @@ void handle_list_request(int client_socket, int client_req_id, char *content, lo
         send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
         return;
     }
-    fprintf(stderr, "content: %s\n", content);
     memcpy(folder_path, content, content_length);
-    //folder_path[content_length-1] = '\0';
-
-    // 1. Determine whether the folder exists
-
+    folder_path[content_length] = '\0';
+    // Find the folder node in the trie
     TrieNode *folder_node = search_trie_node(folder_path, root);
     if (folder_node == NULL)
     {
@@ -994,81 +990,124 @@ void handle_list_request(int client_socket, int client_req_id, char *content, lo
         return;
     }
 
-    // 2. Collect all paths under the folder
-    char *response_content = NULL;
-    size_t response_content_length = 0;
+    // Collect all paths under the folder
+    char **paths = NULL;
+    size_t num_paths = 0;
+    list_paths(folder_node, folder_path, &paths, &num_paths);
 
-    list_paths(folder_node, folder_path, &response_content, &response_content_length);
-    if (response_content == NULL || response_content_length == 0)
+    // Prepare the response content
+    size_t response_content_length = 0;
+    for (size_t i = 0; i < num_paths; i++)
     {
-        send_error_response(client_socket, client_req_id, "Error: No files or folders found\n");
+        response_content_length += strlen(paths[i]) + 1; // +1 for newline
+    }
+
+    char *response_content = malloc(response_content_length + 1); // +1 for null-terminator
+    if (!response_content)
+    {
+        send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
         free(folder_path);
+        for (size_t i = 0; i < num_paths; i++)
+            free(paths[i]);
+        free(paths);
         return;
     }
 
-    // 3. Prepare the response header
-    char header[31];
-    memset(header, '\0', sizeof(header)); // Initialize header to '\0'
+    response_content[0] = '\0';
+    for (size_t i = 0; i < num_paths; i++)
+    {
+        strcat(response_content, paths[i]);
+        strcat(response_content, "\n");
+        free(paths[i]);
+    }
+    free(paths);
 
+    // Prepare the response header
+    char header[31];
     char req_id_str[10];
     char content_length_str[21];
-
     snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
     snprintf(content_length_str, sizeof(content_length_str), "%020zu", response_content_length);
 
-    header[0] = '0'; // Assuming '0' indicates success
-    strncpy(&header[1], req_id_str, 9);
-    strncpy(&header[10], content_length_str, 20);
+    header[0] = '0'; // '0' indicates success
+    memcpy(&header[1], req_id_str, 9);
+    memcpy(&header[10], content_length_str, 20);
+    header[30] = '\0';
 
-    // 4. Send the response header and content to the client
+    // Send the response header and content to the client
     if (write_n_bytes(client_socket, header, 30) != 30 ||
         write_n_bytes(client_socket, response_content, response_content_length) != (ssize_t)response_content_length)
     {
         fprintf(stderr, "Failed to send response to client\n");
     }
 
-    // Clean up
-    free(folder_path);
     free(response_content);
+    free(folder_path);
 }
 
-void collect_paths(TrieNode *node, char *current_path, int depth, char **output, size_t *output_length)
+void collect_paths(TrieNode *node, char *current_path, int depth, char ***output, size_t *output_length)
 {
-    if (node->file_entry){
-        output[*output_length] = strdup(current_path);
-        (*output_length)++; 
-
+    if (node == NULL)
         return;
+
+    // Null-terminate the current path
+    current_path[depth] = '\0';
+
+    // If the node represents a file or directory, add it to the output
+    if (node->file_entry)
+    {
+        // Allocate or reallocate the output array
+        *output = realloc(*output, (*output_length + 1) * sizeof(char *));
+        if (*output == NULL)
+        {
+            fprintf(stderr, "Memory allocation failed\n");
+            return;
+        }
+
+        (*output)[*output_length] = strdup(current_path);
+        (*output_length)++;
     }
+
+    // Recursively traverse the children
     for (int i = 0; i < 256; i++)
     {
         if (node->children[i])
         {
-            char child_path[MAX_PATH_LENGTH];
-            memcpy(child_path, current_path, depth);
-            child_path[depth] = (char)i;
-            collect_paths(node->children[i], child_path, depth + 1, output, output_length);
+            if (depth + 1 >= MAX_PATH_LENGTH)
+            {
+                fprintf(stderr, "Path too long\n");
+                return;
+            }
+
+            // Append the character to the current path
+            current_path[depth] = (char)i;
+
+            // Recurse into the child node
+            collect_paths(node->children[i], current_path, depth + 1, output, output_length);
         }
     }
 }
 
 // Recursive function to collect all paths under a folder node
-void list_paths(TrieNode *node, const char *base_path, char **output, size_t *output_length)
+void list_paths(TrieNode *node, const char *base_path, char ***output, size_t *output_length)
 {
     char current_path[MAX_PATH_LENGTH];
-    memcpy(current_path, base_path, strlen(base_path));
-    collect_paths(node, current_path, strlen(base_path), output, output_length);
 
-    for (int i = 0; i < 256; i++)
+    size_t base_path_len = strlen(base_path);
+    if (base_path_len >= MAX_PATH_LENGTH)
     {
-        if (node->children[i])
-        {
-            char child_path[MAX_PATH_LENGTH];
-            memcpy(child_path, base_path, strlen(base_path));
-            child_path[strlen(base_path)] = (char)i;
-            list_paths(node->children[i], child_path, output, output_length);
-        }
+        fprintf(stderr, "Base path too long\n");
+        return;
     }
+
+    // Copy the base path into current_path
+    memcpy(current_path, base_path, base_path_len);
+    current_path[base_path_len] = '\0'; // Null-terminate the base path
+
+    *output_length = 0;
+    *output = NULL;
+
+    collect_paths(node, current_path, base_path_len, output, output_length);
 }
 
 // END FOR LIST
@@ -1173,7 +1212,7 @@ void *handle_connection(void *arg)
     }
 
     // Debug: Print the request_type
-    fprintf(stderr, "Received REQUEST_TYPE: %c (ASCII: %d)\n", request_type, request_type);
+    fprintf(stderr, "Received REQUEST_TYPE: %c (ASCII: %d)\n", request_type);
 
     // Handle REQUEST_TYPE
     if (request_type == ':') // Storage server connection
@@ -1521,6 +1560,10 @@ void handle_client(int client_socket, char initial_request_type)
         else if (request_type == '5')
         {
             fprintf(stderr, "Received LIST request from client\n");
+            content = strtok_r(content, "\n", &saveptr);
+            fprintf(stderr, "tokenised content: %s\n", content);
+            content_length = strlen(content);
+            fprintf(stderr, "content_length: %ld\n", content_length);
             handle_list_request(client_socket, client_req_id, content, content_length);
         }
         else if (request_type == '7')

@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 #include <stdlib.h>
 
 // FORMAT: YYYY-MM-DDTHH:MM:SS
@@ -83,7 +84,7 @@ void* handle_client(void* arg) {
     fp++;
     int remainingContentLength = contentLength - (fp - vpath); // COULD CAUSE ERRORS, CHECK
     int requestID = atoi(reqdata + 1);
-    fprintf(stderr, "received request: %s %s\n", requeststrings[reqdata[0] - '0' - 1], vpath);
+    fprintf(stderr, "received request: %s %s, ID %d\n", requeststrings[reqdata[0] - '0' - 1], vpath, requestID);
     switch(reqdata[0] - '0') {
         case READ:
             ss_read(client_sockfd, vpath, requestID, fp, remainingContentLength);
