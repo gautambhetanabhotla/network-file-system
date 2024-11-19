@@ -14,6 +14,9 @@ pthread_mutex_t trie_mutex; // Mutex to protect trie operations
 
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length);
 
+// function to look for a path in the cache and then in the trie
+
+
 // Helper function to write n bytes to a socket
 ssize_t write_n_bytes(int socket_fd, const void *buffer, size_t n)
 {
@@ -213,26 +216,64 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
         if (to_create[strlen(to_create) - 1] == '/')
         {
             insert_path(to_create, NULL, 0, root);
-            //NEEDS TO BE CHANGED ???
         }
         else
         {
+
+            // set timestamp
+            time_t t = time(NULL);
+            struct tm tm = *localtime(&t);
+            char timestamp[20];
+            strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &tm);
+            fprintf(stderr, "timestamp: %s\n", timestamp);
+            
             char file_path[4096];
-            snprintf(file_path, sizeof(file_path), "%s%s", folderpath, name); // folder already exists and ends with /
+            size_t folderpath_len = strlen(exist_folder);
+            size_t name_len = strlen(to_create);
+            snprintf(file_path, sizeof(file_path), "%s/%s", exist_folder, to_create);
+            if(folderpath_len + name_len >= sizeof(file_path))
+            {
+                fprintf(stderr, "Path too long\n");
+                send_error_response(client_socket, client_req_id, "Error: Path too long\n");
+                return;
+            }
+            
+            strncpy(file_path, exist_folder, folderpath_len);
+            strncpy(file_path + folderpath_len, to_create, name_len);
+            file_path[folderpath_len + name_len] = '\0';
+
+            size_t content_length = strlen(file_path) + 1 + strlen(timestamp);
+
+            char* content = malloc(content_length + 1);
+            if (content == NULL)
+            {
+                fprintf(stderr, "Failed to allocate memory for content\n");
+                send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
+                return;
+            }
+
+            strncpy(content, file_path, strlen(file_path));
+            content[strlen(file_path)] = ' ';
+            strncpy(content + strlen(file_path) + 1, timestamp, strlen(timestamp));
+            content[content_length] = '\0';
+        
+
             char header[31]; // 30 bytes + null terminator
             char req_id_str[10];
             char content_length_str[21];
             memset(header, 0, sizeof(header));
             memset(req_id_str, 0, sizeof(req_id_str));
             memset(content_length_str, 0, sizeof(content_length_str));
+
             char operation_type = '6';               // '6' for CREATE
-            int path_length = strlen(file_path) + 1; // Include null terminator
             // send 30 bytes header: 1 byte operation type, 9 bytes request id, 20 bytes content length
+            // generate new content length that is length of filepath + new line + timestamp size  using strnc
+
 
             header[0] = operation_type;
             strncpy(&header[1], req_id_str, strlen(req_id_str));
             strncpy(&header[10], content_length_str, strlen(content_length_str));
-            header[30] = '\0';
+            header[30] = '\n';
             // send request to the 3 least filled storage servers of the file entry
             int chosen_servers[3];
             int num_chosen = 0;
@@ -270,14 +311,21 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
                     return;
                 }
 
-                if (write_n_bytes(storage_server_socket, header, 30) != 30 ||
-                    write_n_bytes(storage_server_socket, file_path, path_length) != (ssize_t)path_length)
-                {
+                if (write_n_bytes(storage_server_socket, header, 30) != 30){
+        
                     fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
                     send_error_response(client_socket, client_req_id, "Failed to send request to storage server\n");
                     close(storage_server_socket);
                     return;
                 }
+
+                if(write_n_bytes(storage_server_socket, content, content_length) != (ssize_t)content_length)
+                {
+                    fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
+                    send_error_response(client_socket, client_req_id, "Failed to send request to storage server\n");
+                }
+                
+
                 close(storage_server_socket);
             }
         }
