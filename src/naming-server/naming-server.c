@@ -349,6 +349,8 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
 }
 
 
+
+
 void handle_delete_request(int client_socket, int client_req_id, char *content, long content_length){
     // check for last character being "\n"
     // check if it is a valid path
@@ -359,6 +361,83 @@ void handle_delete_request(int client_socket, int client_req_id, char *content, 
 }
 
 void handle_copy_request(int client_socket, int client_req_id, char *content, long content_length){
+    
+    char * folderpath, * srcpath, * saveptr;
+    srcpath = strtok_r(content, "\n", &saveptr);
+    folderpath = strtok_r(NULL, "\n", &saveptr);
+    if (folderpath[strlen(folderpath) - 1] == '\n'){
+        folderpath[strlen(folderpath) - 1] = '\0';
+    }
+    if (folderpath[strlen(folderpath) - 1] != '/'){
+        send_error_response(client_socket, client_req_id, "Error: Invalid folder path to copy into\n");  // destpath should be a folder      
+        return;
+    }
+    if (search_path(folderpath, root) == NULL){
+        send_error_response(client_socket, client_req_id, "Error: Destination folder does not exist\n");
+        return;
+    }
+    if (search_path(srcpath, root) == NULL){
+        send_error_response(client_socket, client_req_id, "Error: Source path does not exist\n");
+        return;
+    }
+    if (srcpath[strlen(srcpath) - 1] == '/'){
+        // copy folder 
+    }
+
+    else{
+        // copy file
+        // copy_file(srcpath, folderpath);
+        char header[31];
+        memset(header, '\0', sizeof(header));
+
+        StorageServerInfo source_info[3];
+        int ss_id[3];
+        int num_chosen;
+        choose_least_full_servers(ss_id, &num_chosen);
+        FileEntry * src_file = search_path(srcpath, root);
+        
+        if (num_chosen <= 0){
+            send_error_response(client_socket, client_req_id, "Error: No storage servers available\n");
+            return;
+        }
+        int num_successful = 0;
+        for(int i = 0; i<num_chosen; i++){
+            //connect to storage server with id src_file->ss_ids[j]
+
+            int ss_socket = connect_to_storage_server(src_file->ss_ids[j]); // WRITE CODE FOR THIS
+
+            for(int j = 0; j<3; j++){
+                if (src_file->ss_ids[j] <= 0){
+                    continue;                    
+                }
+                memset(header, '\0', sizeof(header));
+                header[0] = '7';
+
+                // now, we need to send from src_file->ss_ids[j] to ss_id[i]  // I am telling src_file->ss_ids[j] to copy src_file into ss_id[i] with destfilepath
+                // send to src_file->ss_ids[j]: (content)
+                // src_path
+                // dest_path (folderpath/filename)
+                // ssip ss_id[i]
+                // port ss_id[i]
+                if (failed)
+                    continue;
+                else
+                    num_successful++;
+                    break;
+            }
+
+            close(ss_socket);
+        }
+        if (num_successful == num_chosen){
+            return success;
+        }
+        else{
+            return failure;
+        }
+
+
+    }
+
     // check for last character being "\n"
     // check if it is a valid path
     // check if it is a file, if it is then send copy request to the three (or how many ever) storage servers along with the ssip and port number for the ss to copy it from, along with last modified time
