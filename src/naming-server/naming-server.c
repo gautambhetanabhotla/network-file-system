@@ -978,7 +978,7 @@ void handle_client(int client_socket, char initial_request_type)
     
     pthread_mutex_lock(&global_req_id_mutex);
     int storage_req_id = global_req_id++;
-    int fd = open("requests.txt", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    FILE * fd = open("requests.txt", O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd < 0) {
         perror("Error opening requests.txt");
         free(content);
