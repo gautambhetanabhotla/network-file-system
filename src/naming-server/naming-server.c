@@ -165,6 +165,7 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
     int total_read = 0;
     fprintf(stderr, "content_length: %ld\n", content_length);
     fprintf(stderr, "content: %s\n", content);
+    //content[content_length-1] = '\0';
 
     FileEntry *file = search_path(content, root);
     if (file == NULL)
@@ -179,7 +180,7 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
         StorageServerInfo ss_info = storage_servers[id];
         // Prepare response content with IP and Port
         char response_content[256]={0};
-        snprintf(response_content, sizeof(response_content), "%s\n%d\n", ss_info.ip_address, ss_info.port);
+        snprintf(response_content, sizeof(response_content), "%s\n%d\n", ss_info.ip_address, ss_info.client_port);
         size_t response_content_length = strlen(response_content);
 
         // Prepare header
@@ -204,7 +205,7 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
             free(path_buffer);
             return;
         }
-        fprintf(stderr, "Sent storage server info to client: IP=%s, Port=%d\n", ss_info.ip_address, ss_info.port);
+        fprintf(stderr, "Sent storage server info to client: IP=%s, Port=%d\n", ss_info.ip_address, ss_info.client_port);
     }
 
     free(path_buffer);
@@ -1463,6 +1464,10 @@ void handle_client(int client_socket, char initial_request_type)
         pthread_mutex_unlock(&global_req_id_mutex);
 
         client_req_id = storage_req_id;
+        char* saveptr;
+        content = strtok_r(content, "\n", &saveptr);
+        fprintf(stderr, "tokenised content: %s\n", content);
+        content_length = strlen(content);
 
         // Handle the request based on request_type
         if (request_type == '6') // '6' for CREATE
