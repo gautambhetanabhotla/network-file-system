@@ -240,9 +240,9 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
                 send_error_response(client_socket, client_req_id, "Error: Path too long\n");
                 return;
             }
-            snprintf(file_path, sizeof(file_path), "%s/%s", exist_folder, to_create);
+            snprintf(file_path, sizeof(file_path), "%s%s", exist_folder, to_create);
             file_path[strlen(file_path)] = '\0';
-
+            fprintf(stderr, "file_path: %s\n", file_path);
             size_t content_length = strlen(file_path) + 1 + strlen(timestamp);
 
             char* content = malloc(content_length + 1);
@@ -255,8 +255,10 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
 
             strncpy(content, file_path, strlen(file_path));
             content[strlen(file_path)] = '\n';
+            fprintf(stderr, "content: %s\n", content);
             strncpy(content + strlen(content), timestamp, strlen(timestamp));
             content[content_length] = '\n';
+            fprintf(stderr, "content: %s\n", content);
         
 
             char header[31]; // 30 bytes + null terminator
@@ -265,14 +267,22 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             memset(header, 0, sizeof(header));
             memset(req_id_str, 0, sizeof(req_id_str));
             memset(content_length_str, 0, sizeof(content_length_str));
+            // add content length to content length string as character
+            snprintf(content_length_str, sizeof(content_length_str), "%ld", content_length);
+            fprintf(stderr, "content_length_str: %s\n", content_length_str);
 
             char operation_type = '6';               // '6' for CREATE
             // send 30 bytes header: 1 byte operation type, 9 bytes request id, 20 bytes content length
             // generate new content length that is length of filepath + new line + timestamp size  using strnc
 
+            // set global request id to req_id_str use strncpy, convert global_req_id to string
+            snprintf(req_id_str, sizeof(req_id_str), "%09d", global_req_id);
+            fprintf(stderr, "req_id_str: %s\n", req_id_str);
+
 
             header[0] = operation_type;
             strncpy(&header[1], req_id_str, strlen(req_id_str));
+            // 
             strncpy(&header[10], content_length_str, strlen(content_length_str));
             header[30] = '\n';
             // send request to the 3 least filled storage servers of the file entry
@@ -295,7 +305,7 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
                 // connect to storage server using IP and Port in the ssinfo using connect and sockaddr
                 struct sockaddr_in storage_server_addr;
                 storage_server_addr.sin_family = AF_INET;
-                storage_server_addr.sin_port = htons(ss_info.port);
+                storage_server_addr.sin_port = htons(ss_info.client_port);
                 storage_server_addr.sin_addr.s_addr = inet_addr(ss_info.ip_address);
                 int storage_server_socket = socket(AF_INET, SOCK_STREAM, 0);
                 // connect 
@@ -311,7 +321,7 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
                     send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
                     return;
                 }
-
+                fprintf(stderr, "header %s\n", header);
                 if (write_n_bytes(storage_server_socket, header, 30) != 30){
         
                     fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
@@ -1008,8 +1018,8 @@ void handle_client(int client_socket, char initial_request_type)
     
     pthread_mutex_lock(&global_req_id_mutex);
     int storage_req_id = global_req_id++;
-    FILE * fd = open("requests.txt", O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if (fd < 0) {
+    FILE * fd = fopen("requests.txt", "a");
+    if (fd == NULL) {
         perror("Error opening requests.txt");
         free(content);
         pthread_mutex_unlock(&global_req_id_mutex);
