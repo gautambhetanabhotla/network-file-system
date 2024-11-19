@@ -559,7 +559,7 @@ int copy_file(char *srcpath, int src_socket, char *destfolder, char *dest_ip, in
     content[strlen(content) + 1] = '\0';
     header[0] = '7'; // copy
     snprintf(&header[1], 9, "%d", reqid);
-    snprintf(&header[10], 20, "%d", strlen(content));
+    snprintf(&header[10], 20, "%ld", strlen(content));
 
     if (write_n_bytes(src_socket, header, 30) != 30 || write_n_bytes(src_socket, content, strlen(content)) != strlen(content))
     {
@@ -1446,13 +1446,16 @@ void *handle_connection(void *arg)
 
 void handle_client(int client_socket, char initial_request_type)
 {
+    int flag = 0;
     while (1)
     {
         char header[30]; // 30 bytes
         ssize_t bytes_received;
 
         // We already received the first byte of the header as initial_request_type
-        header[0] = initial_request_type;
+        if(flag == 0) header[0] = initial_request_type;
+        else read_n_bytes(client_socket, &header[0], 1);
+        flag = 1;
         fprintf(stderr, "initial_request_type: %c\n", header[0]);
         // Read the remaining 29 bytes of the header
         bytes_received = read_n_bytes(client_socket, &header[1], 29);

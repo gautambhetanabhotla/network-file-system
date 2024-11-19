@@ -1,5 +1,5 @@
 CC := /usr/bin/gcc
-CFLAGS := -g -Wall
+CFLAGS := -g
 
 .PHONY: all
 all: ns ss c
