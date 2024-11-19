@@ -1,0 +1,290 @@
+void handle_delete_request(int client_socket, int client_req_id, char *content, long content_length)
+{
+    // Ensure the content is null-terminated
+    char *path = (char *)malloc(content_length + 1);
+    if (!path)
+    {
+        send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
+        return;
+    }
+    memcpy(path, content, content_length);
+    path[content_length] = '\0';
+
+    // Remove trailing newline if present
+    size_t path_len = strlen(path);
+    if (path_len > 0 && path[path_len - 1] == '\n')
+    {
+        path[path_len - 1] = '\0';
+        path_len--;
+    }
+
+    // Check if path is "/"
+    if (strcmp(path, "/") == 0)
+    {
+        send_error_response(client_socket, client_req_id, "Error: Cannot delete root directory\n");
+        free(path);
+        return;
+    }
+
+    // Check if the path exists
+    pthread_mutex_lock(&trie_mutex);
+    FileEntry *entry = search_path(path, root);
+    pthread_mutex_unlock(&trie_mutex);
+
+    if (entry == NULL)
+    {
+        send_error_response(client_socket, client_req_id, "Error: Path does not exist\n");
+        free(path);
+        return;
+    }
+
+    int result = 0;
+    if (path[strlen(path)-1] != '/')
+    {
+        // It's a file
+        result = delete_file(path, entry, client_req_id);
+    }
+    else
+    {
+        // It's a folder
+        result = delete_directory(path);
+    }
+
+    if (result < 0)
+    {
+        send_error_response(client_socket, client_req_id, "Error: Delete operation failed\n");
+        free(path);
+        return;
+    }
+
+    // Send success response
+    char header[31];
+    memset(header, '\0', sizeof(header));
+    char req_id_str[10];
+    char content_length_str[21];
+    snprintf(req_id_str, sizeof(req_id_str), "%d", client_req_id);
+    snprintf(content_length_str, sizeof(content_length_str), "%d", 0);
+
+    header[0] = '0'; // '0' indicates success
+    strncpy(&header[1], req_id_str, 9);
+    strncpy(&header[10], content_length_str, 20);
+
+    if (write_n_bytes(client_socket, header, 30) != 30)
+    {
+        fprintf(stderr, "Failed to send response to client\n");
+    }
+
+    free(path);
+}
+
+int delete_file(const char *path, FileEntry *entry, int client_req_id)
+{
+    int success_count = 0;
+    for (int i = 0; i < 3; i++)
+    {
+        int ss_id = entry->ss_ids[i];
+        if (ss_id == -1)
+            continue;
+
+        StorageServerInfo ss_info = storage_servers[ss_id];
+
+        int ss_socket = connect_to_storage_server(ss_info.ip_address, ss_info.port);
+        if (ss_socket < 0)
+        {
+            fprintf(stderr, "Failed to connect to storage server %d\n", ss_id);
+            continue;
+        }
+
+        // Prepare header
+        char header[31];
+        memset(header, '\0', sizeof(header));
+        char req_id_str[10];
+        char content_length_str[21];
+        // pthread_mutex_lock(&global_req_id_mutex);
+        // int storage_req_id = global_req_id++;
+        // pthread_mutex_unlock(&global_req_id_mutex);
+        int storage_req_id = client_req_id;
+        snprintf(req_id_str, sizeof(req_id_str), "%d", storage_req_id);
+        snprintf(content_length_str, sizeof(content_length_str), "%ld", strlen(path));
+
+        header[0] = '7'; // '7' for DELETE operation
+        strncpy(&header[1], req_id_str, 9);
+        strncpy(&header[10], content_length_str, 20);
+
+        // Send header and path
+        if (write_n_bytes(ss_socket, header, 30) != 30 ||
+            write_n_bytes(ss_socket, path, strlen(path)) != (ssize_t)strlen(path))
+        {
+            fprintf(stderr, "Failed to send delete request to storage server %d\n", ss_id);
+            close(ss_socket);
+            continue;
+        }
+
+        // Read response
+        char response_header[31];
+        if (read_n_bytes(ss_socket, response_header, 30) != 30)
+        {
+            fprintf(stderr, "Failed to read response from storage server %d\n", ss_id);
+            close(ss_socket);
+            continue;
+        }
+
+        if (response_header[0] == '0') // '0' indicates success
+        {
+            success_count++;
+        }
+        else
+        {
+            fprintf(stderr, "Error response from storage server %d\n", ss_id);
+        }
+
+        close(ss_socket);
+    }
+
+    if (success_count == 0)
+    {
+        fprintf(stderr, "Failed to delete file from all storage servers\n");
+        return -1;
+    }
+
+    // Remove file from trie
+    pthread_mutex_lock(&trie_mutex);
+    remove_path(path, root);
+    pthread_mutex_unlock(&trie_mutex);
+
+    return 0;
+}
+
+int delete_directory(const char *path, int client_req_id)
+{
+    // Collect all paths under the directory
+    char **paths = NULL;
+    size_t num_paths = 0;
+
+    collect_all_paths(root, path, &paths, &num_paths);
+
+    if (!paths || num_paths == 0)
+    {
+        fprintf(stderr, "No files or directories found under %s\n", path);
+        return -1;
+    }
+
+    int result = 0;
+
+    // Delete files and directories
+    for (size_t i = 0; i < num_paths; i++)
+    {
+        FileEntry *entry = search_path(paths[i], root);
+        if (entry == NULL)
+            continue;
+
+        if (paths[i][strlen(paths[i]) - 1] != '/' || (paths[i][strlen(paths[i]) - 1] =='\n' && paths[i][strlen(paths[i]) - 1] != '/')) 
+        {
+            // File
+            if (delete_file(paths[i], entry, client_req_id) < 0)
+            {
+                result = -1;
+            }
+        }
+        // else
+        // {
+        //     // Folder, remove from trie
+        //     pthread_mutex_lock(&trie_mutex);
+        //     remove_path(paths[i], root);
+        //     pthread_mutex_unlock(&trie_mutex);
+        // }
+
+        free(paths[i]);
+    }
+    for (size_t i = 0; i < num_paths; i++)
+    {
+        if (paths[i][strlen(paths[i]) - 1] != '/' || (paths[i][strlen(paths[i]) - 1] =='\n' && paths[i][strlen(paths[i]) - 1] != '/')) 
+            free(paths[i]);
+
+        else{
+            // Folder, remove from trie
+            pthread_mutex_lock(&trie_mutex);
+            remove_path(paths[i], root);
+            pthread_mutex_unlock(&trie_mutex);
+            free(paths[i]);
+
+        }
+        
+    }
+
+    free(paths);
+
+    // Remove the directory itself
+    pthread_mutex_lock(&trie_mutex);
+    remove_path(path, root);
+    pthread_mutex_unlock(&trie_mutex);
+
+    return result;
+}
+
+void collect_all_paths(TrieNode *node, const char *base_path, char ***paths, size_t *num_paths)
+{
+    if (!node)
+        return;
+    char current_path[MAX_PATH_LENGTH];
+    strcpy(current_path, base_path);
+    collect_paths_helper(node, current_path, strlen(current_path), paths, num_paths);
+}
+
+void collect_paths_helper(TrieNode *node, char *current_path, int depth, char ***paths, size_t *num_paths)
+{
+    if (!node)
+        return;
+
+    if (node->file_entry)
+    {
+        current_path[depth] = '\0';
+        // Add path to list
+        *paths = realloc(*paths, (*num_paths + 1) * sizeof(char *));
+        (*paths)[*num_paths] = strdup(current_path);
+        (*num_paths)++;
+    }
+
+    for (int i = 0; i < 256; i++)
+    {
+        if (node->children[i])
+        {
+            if (depth + 1 >= MAX_PATH_LENGTH)
+            {
+                fprintf(stderr, "Path too long\n");
+                continue;
+            }
+            current_path[depth] = (char)i;
+            collect_paths_helper(node->children[i], current_path, depth + 1, paths, num_paths);
+        }
+    }
+}
+
+// Function to connect to a storage server
+int connect_to_storage_server(const char *ip_address, int port)
+{
+    int ss_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (ss_socket < 0)
+    {
+        return -1;
+    }
+
+    struct sockaddr_in ss_addr;
+    memset(&ss_addr, 0, sizeof(ss_addr));
+    ss_addr.sin_family = AF_INET;
+    ss_addr.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, ip_address, &ss_addr.sin_addr) <= 0)
+    {
+        close(ss_socket);
+        return -1;
+    }
+
+    if (connect(ss_socket, (struct sockaddr *)&ss_addr, sizeof(ss_addr)) < 0)
+    {
+        close(ss_socket);
+        return -1;
+    }
+
+    return ss_socket;
+}
