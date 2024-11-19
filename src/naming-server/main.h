@@ -37,6 +37,7 @@ typedef struct {
     int ss_ids[3];
     char last_modified[20];
     struct FileEntry *is_copy;
+    int is_folder;
 } FileEntry;
 
 
