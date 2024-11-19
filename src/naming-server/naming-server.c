@@ -125,7 +125,7 @@ void signal_handler(int sig)
     exit(0);
 }
 
-void handle_rws_request(int client_socket, int client_req_id, char *content, long content_length, char request_type)
+void handle_rs_request(int client_socket, int client_req_id, char *content, long content_length, char request_type)
 {
     char *path_buffer = malloc(content_length + 1);
     if (path_buffer == NULL)
@@ -339,8 +339,10 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
 void handle_delete_request(int client_socket, int client_req_id, char *content, long content_length){
     // check for last character being "\n"
     // check if it is a valid path
-    // check if it is a file, if it is then send delete request to the three (or how many ever) storage servers it is stored in
-    // if it is a folder, find all the files under it in the trie, then send delete request for each of the files, then delete each folder from the trie
+    // check if it is a file, if it is then send delete request to the three (or how many ever) storage servers it is stored in (For this first write a delete file function that deletes a file in the storage servers (all 3 of them or less) and then delete the file from the trie)
+    // if it is a folder, find all the files under it in the trie, then send delete request for each of the files, then delete each folder from the trie (just use the delete file function for all the files in the folder)
+    // delete '/' (home) should not be allowed
+    // also after deleting from all the storage servers, delete the entry from the trie
 }
 
 void handle_copy_request(int client_socket, int client_req_id, char *content, long content_length){
@@ -560,7 +562,6 @@ void handle_list_request(int client_socket, int client_req_id, char *content, lo
     free(folder_path);
     free(response_content);
 }
-
 
 void collect_paths(TrieNode *node, char *current_path, int depth, char **output, size_t *output_length)
 {
@@ -1029,7 +1030,7 @@ void handle_client(int client_socket, char initial_request_type)
     else if (request_type == '1' || request_type == '3')
     {
         fprintf(stderr, "Received READ/STREAM request from client\n");
-        handle_rws_request(client_socket, client_req_id, content, content_length, request_type);
+        handle_rs_request(client_socket, client_req_id, content, content_length, request_type);
     } 
     else if(request_type == '2'){ // TO BE DONE
         fprintf(stderr, "Received WRITE request from client\n");
