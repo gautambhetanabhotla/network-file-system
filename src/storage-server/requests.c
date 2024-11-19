@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
@@ -100,9 +101,7 @@ void* handle_client(void* arg) {
             ss_stream(client_sockfd, vpath, requestID, fp, remainingContentLength);
             break;
         case COPY:
-            char vpath2[MAXPATHLENGTH + 1];
-            recv(client_sockfd, vpath2, sizeof(vpath2) - 1, 0);
-            ss_copy(client_sockfd, vpath, vpath2, requestID, fp, remainingContentLength);
+            ss_copy(client_sockfd, vpath, requestID, fp, remainingContentLength);
             break;
         case INFO:
             ss_info(client_sockfd, vpath, requestID, fp, remainingContentLength);
@@ -137,7 +136,7 @@ void ss_read(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     if(f->readers == 1) sem_wait(&f->writelock);
     sem_post(&f->lock);
     sem_post(&f->serviceQueue);
-    respond(-1, fd, file_size, requestID, file_size);
+    respond(-1, fd, ACK, requestID, file_size);
     while(!feof(F)) {
         n = fread(buf, 1, 8192, F);
         if(n > 0) send(fd, buf, n, 0);
@@ -250,8 +249,53 @@ void ss_stream(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     sem_post(&f->lock);
 }
 
-void ss_copy(int fd, char* vpath1, char* vpath2, int requestID, char* tbf, int rcl) {
+void ss_copy(int fd, char* srcpath, int requestID, char* tbf, int rcl) {
+    struct file* f = get_file(srcpath);
+    char *fp = tbf, *fpp = fp;
+    while(*fp != '\n') fp++;
+    *fp = '\0';
+    fp++;
+    char* dstpath = (char*) malloc(4097 * sizeof(char));
+    strcpy(dstpath, fpp);
+    dstpath[strlen(dstpath)] = '\n';
+    fpp = fp;
+    while(*fp != '\n') fp++;
+    *fp = '\0';
+    fp++;
+    char* IP = (char*) malloc(100 * sizeof(char));
+    strcpy(IP, fpp);
+    fpp = fp;
+    while(*fp != '\n') fp++;
+    *fp = '\0';
+    fp++;
+    int port = atoi(fpp);
 
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = inet_addr(IP);
+    int destfd = socket(AF_INET, SOCK_STREAM, 0);
+    if(connect(destfd, (struct sockaddr*) &addr, sizeof(addr)) < 0) {
+        respond(nm_sockfd, fd, E_CONN_REFUSED, requestID, 0);
+    }
+    free(IP);
+    if(!f) {
+        respond(nm_sockfd, fd, E_FILE_DOESNT_EXIST, requestID, 0);
+        return;
+    }
+    FILE* F = fopen(f->rpath, "r");
+    fseek(F, 0, SEEK_END);
+    long file_size = ftell(F);
+    rewind(F);
+    request(-1, destfd, WRITE, file_size);
+    char buf[8193]; int n = 0;
+    send(destfd, dstpath, strlen(dstpath), 0);
+    while(!feof(F)) {
+        n = fread(buf, 1, 8192, F);
+        if(n > 0) send(destfd, buf, n, 0);
+    }
+    fclose(F);
+    respond(nm_sockfd, fd, SUCCESS, requestID, 0);
 }
 
 void ss_info(int fd, char* vpath, int requestID, char* tbf, int rcl) {
