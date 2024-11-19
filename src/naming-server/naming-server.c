@@ -186,6 +186,165 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
     fprintf(stderr, "Handled rws request %d %s %ld %c\n", client_req_id, content, content_length, request_type);
 }
 
+int delete_directory(const char *path)
+{
+    // Use existing collect_paths function to gather all paths under the directory
+    char *response_content = NULL;
+    size_t response_content_length = 0;
+
+    pthread_mutex_lock(&trie_mutex);
+    TrieNode *dir_node = search_path(path, root);
+    pthread_mutex_unlock(&trie_mutex);
+
+    if (dir_node == NULL)
+    {
+        fprintf(stderr, "Directory does not exist: %s\n", path);
+        return -1;
+    }
+
+    // Collect all file and directory paths under the given directory
+    list_paths(dir_node, path, &response_content, &response_content_length);
+
+    if (response_content == NULL || response_content_length == 0)
+    {
+        fprintf(stderr, "No files or directories found under %s\n", path);
+        return -1;
+    }
+
+    // Split the collected paths into an array
+    char **paths = NULL;
+    size_t num_paths = 0;
+
+    char *saveptr;
+    char *line = strtok_r(response_content, "\n", &saveptr);
+    while (line != NULL)
+    {
+        paths = realloc(paths, (num_paths + 1) * sizeof(char *));
+        paths[num_paths] = strdup(line);
+        num_paths++;
+        line = strtok_r(NULL, "\n", &saveptr);
+    }
+
+    int result = 0;
+
+    // Delete each file or directory
+    for (size_t i = 0; i < num_paths; i++)
+    {
+        pthread_mutex_lock(&trie_mutex);
+        FileEntry *entry = search_path(paths[i], root);
+        pthread_mutex_unlock(&trie_mutex);
+
+        if (entry == NULL)
+            continue;
+
+        if (entry->is_folder == 0)
+        {
+            // It's a file
+            if (delete_file(paths[i], entry) < 0)
+            {
+                result = -1;
+            }
+        }
+        else
+        {
+            // It's a directory, remove from trie
+            pthread_mutex_lock(&trie_mutex);
+            remove_path(paths[i], root);
+            pthread_mutex_unlock(&trie_mutex);
+        }
+
+        free(paths[i]);
+    }
+
+    free(paths);
+    free(response_content);
+
+    // Remove the directory itself from the trie
+    pthread_mutex_lock(&trie_mutex);
+    remove_path(path, root);
+    pthread_mutex_unlock(&trie_mutex);
+
+    return result;
+}
+
+int delete_file(const char *path, FileEntry *entry)
+{
+    int success_count = 0;
+
+    // Send delete request to all storage servers that have the file
+    for (int i = 0; i < 3; i++)
+    {
+        int ss_id = entry->ss_ids[i];
+        if (ss_id == -1)
+            continue;
+
+        StorageServerInfo ss_info = storage_servers[ss_id];
+
+        int ss_socket = connect_to_storage_server(ss_info.ip_address, ss_info.port);
+        if (ss_socket < 0)
+        {
+            fprintf(stderr, "Failed to connect to storage server %d\n", ss_id);
+            continue;
+        }
+
+        // Prepare header
+        char header[31] = {0};
+        char req_id_str[10];
+        char content_length_str[21];
+        pthread_mutex_lock(&global_req_id_mutex);
+        int storage_req_id = global_req_id++;
+        pthread_mutex_unlock(&global_req_id_mutex);
+        snprintf(req_id_str, sizeof(req_id_str), "%09d", storage_req_id);
+        snprintf(content_length_str, sizeof(content_length_str), "%020ld", strlen(path) + 1);
+
+        header[0] = '7'; // '7' for DELETE operation
+        strncpy(&header[1], req_id_str, 9);
+        strncpy(&header[10], content_length_str, 20);
+
+        // Send header and path
+        if (write_n_bytes(ss_socket, header, 30) != 30 ||
+            write_n_bytes(ss_socket, path, strlen(path) + 1) != (ssize_t)(strlen(path) + 1))
+        {
+            fprintf(stderr, "Failed to send delete request to storage server %d\n", ss_id);
+            close(ss_socket);
+            continue;
+        }
+
+        // Read response
+        char response_header[31];
+        if (read_n_bytes(ss_socket, response_header, 30) != 30)
+        {
+            fprintf(stderr, "Failed to read response from storage server %d\n", ss_id);
+            close(ss_socket);
+            continue;
+        }
+
+        if (response_header[0] == '0') // '0' indicates success
+        {
+            success_count++;
+        }
+        else
+        {
+            fprintf(stderr, "Error response from storage server %d\n", ss_id);
+        }
+
+        close(ss_socket);
+    }
+
+    if (success_count == 0)
+    {
+        fprintf(stderr, "Failed to delete file from all storage servers\n");
+        return -1;
+    }
+
+    // Remove the file entry from the trie
+    pthread_mutex_lock(&trie_mutex);
+    remove_path(path, root);
+    pthread_mutex_unlock(&trie_mutex);
+
+    return 0;
+}
+
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length)
 {
     // Parse content into folderpath and name
@@ -381,13 +540,61 @@ int copy_file(char * srcpath, int src_socket, char * destfolder, char * dest_ip,
 }
 
 
-void handle_delete_request(int client_socket, int client_req_id, char *content, long content_length){
-    // check for last character being "\n"
-    // check if it is a valid path
-    // check if it is a file, if it is then send delete request to the three (or how many ever) storage servers it is stored in (For this first write a delete file function that deletes a file in the storage servers (all 3 of them or less) and then delete the file from the trie)
-    // if it is a folder, find all the files under it in the trie, then send delete request for each of the files, then delete each folder from the trie (just use the delete file function for all the files in the folder)
-    // delete '/' (home) should not be allowed
-    // also after deleting from all the storage servers, delete the entry from the trie
+void handle_delete_request(int client_socket, int client_req_id, char *content, long content_length)
+{
+    // 1. Check that the last character is '\n'
+    if (content_length == 0 || content[content_length - 1] != '\n')
+    {
+        send_error_response(client_socket, client_req_id, "Error: Request must end with a newline character\n");
+        return;
+    }
+
+    // Remove the trailing '\n'
+    content[content_length - 1] = '\0';
+    content_length--;
+
+    // 2. Check if it's a valid path
+    char *path = content;
+
+    pthread_mutex_lock(&trie_mutex);
+    FileEntry *entry = search_path(path, root);
+    pthread_mutex_unlock(&trie_mutex);
+
+    if (entry == NULL)
+    {
+        send_error_response(client_socket, client_req_id, "Error: Path does not exist\n");
+        return;
+    }
+
+    // 4. Check if the path is '/' (home)
+    if (strcmp(path, "/") == 0)
+    {
+        send_error_response(client_socket, client_req_id, "Error: Cannot delete root directory\n");
+        return;
+    }
+
+    int result = 0;
+
+    // Check if it's a file or a directory
+    if (entry->is_folder == 0)
+    {
+        // It's a file
+        result = delete_file(path, entry);
+    }
+    else
+    {
+        // It's a directory
+        result = delete_directory(path);
+    }
+
+    if (result < 0)
+    {
+        send_error_response(client_socket, client_req_id, "Error: Delete operation failed\n");
+        return;
+    }
+
+    // Send success response to client
+    send_success(client_socket, client_req_id, "Delete operation successful\n");
 }
 
 int send_success(int client_socket, int client_req_id, char *message){
