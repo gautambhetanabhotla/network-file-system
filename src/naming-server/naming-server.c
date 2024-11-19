@@ -13,6 +13,10 @@ int global_req_id = 1;
 pthread_mutex_t trie_mutex; // Mutex to protect trie operations
 
 void handle_create_request(int client_socket, int client_req_id, char *content, long content_length);
+int delete_file(const char *path, FileEntry *entry);
+int send_success(int client_socket, int client_req_id, char *message);
+void list_paths(TrieNode *node, const char *base_path, char **output, size_t *output_length);
+int connect_to_storage_server(const char *ip_address, int port);
 
 // function to look for a path in the cache and then in the trie
 
@@ -193,7 +197,7 @@ int delete_directory(const char *path)
     size_t response_content_length = 0;
 
     pthread_mutex_lock(&trie_mutex);
-    TrieNode *dir_node = search_path(path, root);
+    FileEntry *dir_node = search_path(path, root);
     pthread_mutex_unlock(&trie_mutex);
 
     if (dir_node == NULL)
@@ -1451,13 +1455,13 @@ void handle_client(int client_socket, char initial_request_type)
     else if (request_type == '7')
     {
         fprintf(stderr, "Received COPY request from client\n");
-        //handle_copy_request(client_socket, client_req_id, content, content_length);
+        handle_copy_request(client_socket, client_req_id, content, content_length);
 
     }
     else if(request_type == '8')
     {
         fprintf(stderr, "Received DELETE request from client\n");
-        //handle_delete_request(client_socket, client_req_id, content, content_length);
+        handle_delete_request(client_socket, client_req_id, content, content_length);
     }
     else
     {
