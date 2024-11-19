@@ -16,6 +16,8 @@ extern unsigned long long int n_file_entries;
 
 extern int nm_sockfd;
 
+char* requeststrings[] = {"read", "write", "stream", "info", "list", "create", "copy", "delete", "sync", "hello", "created"};
+
 void ns_synchronize(int fd, char* vpath, int requestID) {
     
 }
@@ -80,6 +82,7 @@ void* handle_client(void* arg) {
     fp++;
     int remainingContentLength = contentLength - (fp - vpath); // COULD CAUSE ERRORS, CHECK
     int requestID = atoi(reqdata + 1);
+    fprintf(stderr, "received request: %s %s\n", requeststrings[reqdata[0] - '0' - 1], vpath);
     switch(reqdata[0] - '0') {
         case READ:
             ss_read(client_sockfd, vpath, requestID, fp, remainingContentLength);
