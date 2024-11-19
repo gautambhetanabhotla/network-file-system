@@ -334,6 +334,7 @@ int read_it(const char * filepath){
     memset(reqid, 0, sizeof(reqid));
     strncpy(reqid, &response[1], 9);
     int req_id = atoi(reqid);
+    fprintf(stderr, "%s response\n", response);
 
     ns_bytes_received = recv(ns_socket, response, atoi(content_length), 0);
     response[ns_bytes_received] = '\0';
@@ -351,14 +352,14 @@ int read_it(const char * filepath){
 
     ss_ip = strtok_r(response, "\n", &saveptr);
     char *port_str = strtok_r(NULL, "\n", &saveptr);
-
+    fprintf(stderr, "%s response\n", response);
     if (!ss_ip || !port_str) {
         fprintf(stderr, "Invalid response received from naming server.\n");
         return -1;
     }
     ss_portnum = atoi(port_str);     // Convert port string to integer
 
-
+    fprintf(stderr, "IP: %s\nPort: %d\n", ss_ip, ss_portnum);
     // Check if is less than 0
     if (ss_portnum < 0) {
         printf("Sorry, the file was not found.\n");
