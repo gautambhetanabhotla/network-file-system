@@ -321,6 +321,7 @@ int delete_file(const char *path, FileEntry *entry, int client_req_id)
         char req_id_str[10];
         char content_length_str[21];
 
+
         snprintf(req_id_str, sizeof(req_id_str), "%09d", storage_req_id);
         fprintf(stderr, "path length: %ld\n", strlen(path));
         snprintf(content_length_str, sizeof(content_length_str), "%020ld", strlen(path) + 1);
@@ -630,6 +631,7 @@ void handle_delete_request(int client_socket, int client_req_id, char *content, 
     if (entry->is_folder == 0)
     {
         // It's a file
+        // delete trie node from the trie
         result = delete_file(path, entry, client_req_id);
         // also delete from trie, make parent point to NULL
         pthread_mutex_lock(&trie_mutex);
@@ -1233,6 +1235,8 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
     pthread_mutex_unlock(&storage_server_mutex);
 }
 
+char* requeststrings[] = {"read", "write", "stream", "info", "list", "create", "copy", "delete", "sync", "hello", "created"};
+
 void *handle_connection(void *arg)
 {
     int client_socket = *(int *)arg;
@@ -1563,7 +1567,7 @@ void handle_client(int client_socket, char initial_request_type)
         }
 
         char file_write_buffer[256];
-        int len = snprintf(file_write_buffer, sizeof(file_write_buffer), "%d request: id: %c req_id: %s content_length %s\n", storage_req_id, header[0], id_str, content_length_str);
+        int len = snprintf(file_write_buffer, sizeof(file_write_buffer), "%d request: Op_type: %s req_id: %s content_length %s\n", storage_req_id, requeststrings[header[0]-'0'-1], id_str, content_length_str);
         fwrite(file_write_buffer, 1, len, fd);
         fclose(fd);
         pthread_mutex_unlock(&global_req_id_mutex);
