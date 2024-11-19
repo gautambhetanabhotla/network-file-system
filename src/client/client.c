@@ -195,7 +195,6 @@ int ns_connect(const char *server_ip, int server_port) {
 // flag --SYNC will be considered too, ASSUMPTION: it must be at the end
 // ASSUMPTION only write can be asynchronous
 
-
 int ns_request_print(int op_id, char * content) {
     int req_id = 1;
     char buffer[BUFFER_SIZE];
@@ -210,17 +209,28 @@ int ns_request_print(int op_id, char * content) {
     // printf("Response:\n");
 
     // Receive and print the entire response in chunks
-    bytes_received = recv(ns_socket, buffer, sizeof(buffer) - 1, 0);
-
-    while ((bytes_received = recv(ns_socket, buffer, sizeof(buffer) - 1, 0)) > 0) {
-        buffer[bytes_received] = '\0'; // Null-terminate the buffer
+    bytes_received = recv(ns_socket, buffer, 30, 0);
+    int content_length = atoi(&buffer[10]);
+    while(content_length){
+        bytes_received = recv(ns_socket, buffer, content_length % sizeof(buffer), 0);
+        if (bytes_received < 0){
+            printf("Failed to receive response from naming server.\n");
+            return -1;
+        }
+        content_length -= bytes_received;
         printf("%s", buffer);          // Print the received chunk
+
     }
 
-    if (bytes_received < 0) {
-        perror("Failed to receive response from naming server.\n");
-        return -1;
-    }
+    // while ((bytes_received = recv(ns_socket, buffer, sizeof(buffer) - 1, 0)) > 0) {
+    //     buffer[bytes_received] = '\0'; // Null-terminate the buffer
+    //     printf("%s", buffer);          // Print the received chunk
+    // }
+
+    // if (bytes_received < 0) {
+    //     perror("Failed to receive response from naming server.\n");
+    //     return -1;
+    // }
 
     printf("\n"); // Ensure proper formatting after response
     return 0;
