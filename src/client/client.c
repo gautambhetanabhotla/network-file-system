@@ -957,6 +957,23 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
     while(1){
+
+
+        int error = 0;
+        socklen_t len = sizeof(error);
+
+        if (getsockopt(ns_socket, SOL_SOCKET, SO_ERROR, &error, &len) < 0) {
+            // An error occurred
+            printf("SORRY, ERROR WITH NS CONNECTION");
+            exit(1);
+        }
+
+        if (error != 0) {
+            // Socket has an error
+            printf("SORRY, ERROR WITH NS CONNECTION");
+            exit(1);
+        }
+        
         synchronous = false;
         if (fgets(request, sizeof(request), stdin) == NULL) {
             printf("Error reading input\n");
