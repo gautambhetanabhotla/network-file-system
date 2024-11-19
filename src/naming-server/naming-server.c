@@ -958,6 +958,7 @@ void handle_list_request(int client_socket, int client_req_id, char *content, lo
 {
     // Ensure the content is null-terminated
     char *folder_path = malloc(content_length + 1);
+    memcpy(folder_path, "\0", content_length+1);
     if (!folder_path)
     {
         send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
@@ -965,7 +966,7 @@ void handle_list_request(int client_socket, int client_req_id, char *content, lo
     }
     fprintf(stderr, "content: %s\n", content);
     memcpy(folder_path, content, content_length);
-    folder_path[content_length-1] = '\0';
+    //folder_path[content_length-1] = '\0';
 
     // 1. Determine whether the folder exists
 
@@ -1468,6 +1469,7 @@ void handle_client(int client_socket, char initial_request_type)
         content = strtok_r(content, "\n", &saveptr);
         fprintf(stderr, "tokenised content: %s\n", content);
         content_length = strlen(content);
+        fprintf(stderr, "content_length: %ld\n", content_length);
 
         // Handle the request based on request_type
         if (request_type == '6') // '6' for CREATE
