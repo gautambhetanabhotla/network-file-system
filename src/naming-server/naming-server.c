@@ -335,6 +335,14 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
     // char *content_copy = strdup(content);
 }
 
+
+void handle_delete_request(int client_socket, int client_req_id, char *content, long content_length){
+    // check for last character being "\n"
+    // check if it is a valid path
+    // check if it is a file, if it is then send delete request to the three (or how many ever) storage servers it is stored in
+    // if it is a folder, find all the files under it in the trie, then send delete request to each of the storage servers for each of the files, then delete each folder from the trie
+}
+
 void handle_info_request(int client_socket, int client_req_id, char *content, long content_length)
 {
     fprintf(stderr, "Handling INFO request for path: %s\n", content);
