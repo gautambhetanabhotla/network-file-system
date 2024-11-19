@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 #include <stdlib.h>
 
 // FORMAT: YYYY-MM-DDTHH:MM:SS
@@ -18,6 +19,7 @@ extern unsigned long long int n_file_entries;
 extern int nm_sockfd;
 
 char* requeststrings[] = {"read", "write", "stream", "info", "list", "create", "copy", "delete", "sync", "hello", "created"};
+char* exitstatusstrings[] = {"success", "acknowledge", "file doesn't exist", "incomplete write", "file already exists", "nm chose the wrong ss", "an error from SS's side", "connection refused"};
 
 void ns_synchronize(int fd, char* vpath, int requestID) {
     
@@ -28,6 +30,7 @@ void respond(int nmfd, int clfd, enum exit_status status, int requestID, long co
     sprintf(header + 1, "%d", requestID);
     char CL[21]; CL[20] = '\0';
     sprintf(CL, "%ld", contentLength);
+    fprintf(stderr, "Responding with %s for request ID %d\n", exitstatusstrings[status], requestID);
     if(clfd != -1){
         send(clfd, header, sizeof(header) - 1, 0);
         send(clfd, CL, sizeof(CL) - 1, 0);
@@ -43,6 +46,7 @@ void request(int nmfd, int clfd, enum request_type type, long contentLength) {
     snprintf(header + 1, 9, "%d", 0);
     char CL[21]; CL[20] = '\0';
     sprintf(CL, "%ld", contentLength);
+    fprintf(stderr, "Requesting %s\n", requeststrings[type]);
     if(clfd != -1) {
         send(clfd, header, sizeof(header) - 1, 0);
         send(clfd, CL, sizeof(CL) - 1, 0);
@@ -83,7 +87,7 @@ void* handle_client(void* arg) {
     fp++;
     int remainingContentLength = contentLength - (fp - vpath); // COULD CAUSE ERRORS, CHECK
     int requestID = atoi(reqdata + 1);
-    fprintf(stderr, "received request: %s %s\n", requeststrings[reqdata[0] - '0' - 1], vpath);
+    fprintf(stderr, "received request: %s %s, ID %d\n", requeststrings[reqdata[0] - '0' - 1], vpath, requestID);
     switch(reqdata[0] - '0') {
         case READ:
             ss_read(client_sockfd, vpath, requestID, fp, remainingContentLength);

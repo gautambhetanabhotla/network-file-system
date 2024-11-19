@@ -263,49 +263,10 @@ int copy(const char *source_filepath, const char *dest_folderpath) {
 
 // INFO operation
 int info(const char *filepath) {
-    char request[BUFFER_SIZE];
-    snprintf(request, sizeof(request), "%s\n", filepath);
-    return ns_request_print(4, request);
-}
-
-// LIST operation
-int list(const char *folderpath) {
-    char request[BUFFER_SIZE];
-    snprintf(request, sizeof(request), "%s\n", folderpath);
-    return ns_request_print(5, request);
-}
-
-
-// int ns_request(const char * request, char * response, int response_size) {
-    
-//     ssize_t bytes_received;
-
-//     // Send the request
-//     if (send(ns_socket, request, strlen(request), 0) < 0) {
-//         perror("Failed to send request to naming server.\n");
-//         return -1;
-//     }
-
-//     // printf("Response:\n");
-
-//     // Receive and print the entire response in chunks  
-//     bytes_received = recv(ns_socket, response, response_size, 0);
-//     response[bytes_received] = '\0';
-    
-    
-//     if (bytes_received < 0) {
-//         perror("Failed to receive response from naming server.\n");
-//         return -1;
-//     }
-//     // printf("\n"); // Ensure proper formatting after response
-//     return 0;
-// }
-
-int read_it(const char * filepath){
     
     char response[BUFFER_SIZE];
     char request[BUFFER_SIZE];
-    if (send_it(1, 1, filepath, ns_socket) < 0){
+    if (send_it(4, 1, filepath, ns_socket) < 0){
         perror("Failed to send request to naming server.\n");
         return -1;
     }
@@ -313,7 +274,6 @@ int read_it(const char * filepath){
     ssize_t ns_bytes_received;
 
     ns_bytes_received = recv(ns_socket, response, 30, 0);
-    
     
     if (ns_bytes_received != 30) {
         perror("Failed to receive response from naming server.\n");
@@ -328,7 +288,6 @@ int read_it(const char * filepath){
         printf("Sorry, the file was not found or there was some other error in the (naming) server.\n");
         return -1;
     }
-    
 
     char reqid[9];
     memset(reqid, 0, sizeof(reqid));
@@ -343,8 +302,6 @@ int read_it(const char * filepath){
         perror("Failed to receive response from naming server.\n");
         return -1;
     }
-
-
     
     char * ss_ip;
     int ss_portnum;
@@ -365,7 +322,6 @@ int read_it(const char * filepath){
         printf("Sorry, the file was not found.\n");
         return -1;
     }
-
 
     int ss_socket;
     struct sockaddr_in server_addr;
@@ -430,8 +386,6 @@ int read_it(const char * filepath){
 
     data_length = atoi(&length_buffer[10]); // Convert the length to an integer
 
-
-
     // Check if the length is negative
     if (data_length < 0) {
         fprintf(stderr, "Error: Received negative data length\n"); //(%lld)\n", data_length
@@ -462,6 +416,197 @@ int read_it(const char * filepath){
         printf("%s", data_buffer);
     }
 
+    close(ss_socket); 
+    return 0;
+}
+
+// LIST operation
+int list(const char *folderpath) {
+    char request[BUFFER_SIZE];
+    snprintf(request, sizeof(request), "%s\n", folderpath);
+    return ns_request_print(5, request);
+}
+
+
+// int ns_request(const char * request, char * response, int response_size) {
+    
+//     ssize_t bytes_received;
+
+//     // Send the request
+//     if (send(ns_socket, request, strlen(request), 0) < 0) {
+//         perror("Failed to send request to naming server.\n");
+//         return -1;
+//     }
+
+//     // printf("Response:\n");
+
+//     // Receive and print the entire response in chunks  
+//     bytes_received = recv(ns_socket, response, response_size, 0);
+//     response[bytes_received] = '\0';
+    
+    
+//     if (bytes_received < 0) {
+//         perror("Failed to receive response from naming server.\n");
+//         return -1;
+//     }
+//     // printf("\n"); // Ensure proper formatting after response
+//     return 0;
+// }
+
+int read_it(const char * filepath){
+    
+    char response[BUFFER_SIZE];
+    char request[BUFFER_SIZE];
+    if (send_it(1, 1, filepath, ns_socket) < 0){
+        perror("Failed to send request to naming server.\n");
+        return -1;
+    }
+
+    ssize_t ns_bytes_received;
+
+    ns_bytes_received = recv(ns_socket, response, 30, 0);
+    
+    
+    if (ns_bytes_received != 30) {
+        perror("Failed to receive response from naming server.\n");
+        return -1;
+    }
+    response[ns_bytes_received] = '\0';
+    char content_length[20];
+    memset(content_length, 0, sizeof(content_length));
+    strncpy(content_length, &response[10], 20);
+
+    if (atoi(content_length) < 0){
+        printf("Sorry, the file was not found or there was some other error in the (naming) server.\n");
+        return -1;
+    }
+
+    char reqid[9];
+    memset(reqid, 0, sizeof(reqid));
+    strncpy(reqid, &response[1], 9);
+    int req_id = atoi(reqid);
+    fprintf(stderr, "%s response\n", response);
+
+    ns_bytes_received = recv(ns_socket, response, atoi(content_length), 0);
+    response[ns_bytes_received] = '\0';
+
+    if (ns_bytes_received != atoi(content_length)) {
+        perror("Failed to receive response from naming server.\n");
+        return -1;
+    }
+    
+    char * ss_ip;
+    int ss_portnum;
+    char * saveptr;
+
+    ss_ip = strtok_r(response, "\n", &saveptr);
+    char *port_str = strtok_r(NULL, "\n", &saveptr);
+    fprintf(stderr, "%s response\n", response);
+    if (!ss_ip || !port_str) {
+        fprintf(stderr, "\"%s\": response received from naming server.\n", response);
+        return -1;
+    }
+    ss_portnum = atoi(port_str);     // Convert port string to integer
+
+    fprintf(stderr, "IP: %s\nPort: %d\n", ss_ip, ss_portnum);
+    // Check if is less than 0
+    if (ss_portnum < 0) {
+        printf("Sorry, the file was not found.\n");
+        return -1;
+    }
+
+    int ss_socket;
+    struct sockaddr_in server_addr;
+
+    // Create the socket
+    ss_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (ss_socket < 0) {
+        perror("Failed to create socket for storage server\n");
+        return -1;
+    }
+
+    // Set up the server address structure
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(ss_portnum);
+
+    // Convert the IP address from text to binary form
+    if (inet_pton(AF_INET, ss_ip, &server_addr.sin_addr) <= 0) {
+        perror("Invalid IP address format for storage server\n");
+        close(ss_socket);
+        return -1;
+    }
+
+    int attempt = 0;
+    while (attempt < TIMEOUT) {
+        printf("Trying to connect to storage server...\n");
+        if (connect(ss_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0) {
+            // printf("Connected to storage server at %s:%d\n", ss_ip, ss_portnum);
+            break;
+        }
+
+        sleep(1); // Wait 1 second before retrying
+        attempt++;
+        if (attempt >= TIMEOUT){
+            perror("Failed to connect to the storage server.\n");
+            close(ss_socket);
+            return -1;
+        }
+    }
+
+    char length_buffer[31]; // For the 20-byte length response + null terminator
+    char data_buffer[BUFFER_SIZE]; // To store the actual data
+    ssize_t ss_bytes_received = 0;
+    long long int data_length;
+
+    // Send the request to the server
+    if (send_it(1, req_id, filepath, ss_socket) < 0) {
+        perror("Failed to send request to storage server\n");
+        close(ss_socket);
+        return -1;
+    }
+
+    // Receive the 30-byte header
+    ss_bytes_received = recv(ss_socket, length_buffer, 30, 0);
+    if (ss_bytes_received != 30) {
+        perror("Failed to receive correct response from storage server\n");
+        close(ss_socket);
+        return -1;
+    }
+
+    length_buffer[ss_bytes_received] = '\0'; // Null-terminate the length buffer
+
+    data_length = atoi(&length_buffer[10]); // Convert the length to an integer
+
+    // Check if the length is negative
+    if (data_length < 0) {
+        fprintf(stderr, "Error: Received negative data length\n"); //(%lld)\n", data_length
+        close(ss_socket);
+        return -1;
+    }
+
+    ss_bytes_received = 0;
+    int num;
+    while(1){
+        // Receive the actual data
+        num = recv(ss_socket, data_buffer, (data_length - ss_bytes_received) % (BUFFER_SIZE - 1), 0);
+        if (num < 0){
+            perror("Failed to receive complete data\n");
+            break;
+        }
+        if (num == 0){
+            perror("Failed to receive complete data, connection with storage server terminated.\n");
+            break;
+        }
+        ss_bytes_received += num;
+        if (ss_bytes_received == data_length) {
+            data_buffer[num] = '\0';
+            printf("%s", data_buffer);
+            printf("\nSuccess! Data read wholly!\n");
+            break;
+        }
+        printf("%s", data_buffer);
+    }
 
     close(ss_socket); 
     return 0;
@@ -631,25 +776,20 @@ int stream(const char * filepath){
 
     ss_bytes_received = 0;
     int num;
-    while(1){
-        // Receive the actual data
-        num = recv(ss_socket, data_buffer, (data_length - ss_bytes_received) % (BUFFER_SIZE - 1), 0);
-        if (num < 0){
-            perror("Failed to receive complete data\n");
+
+    ss_bytes_received = 0;
+    while (ss_bytes_received < data_length) {
+        int remaining = data_length - ss_bytes_received;
+        int to_read = (remaining < BUFFER_SIZE) ? remaining : BUFFER_SIZE;
+        
+        num = recv(ss_socket, data_buffer, to_read, 0);
+        if (num <= 0) {
+            perror("Failed to receive audio data");
             break;
         }
-        if (num == 0){
-            perror("Failed to receive complete data, connection with storage server terminated.\n");
-            break;
-        }
-        ss_bytes_received += num;
-        if (ss_bytes_received == data_length) {
-            memset(&data_buffer[num], '\0', BUFFER_SIZE - num);
-            ao_play(device, data_buffer, num);
-            printf("\nSuccess! Data streamed wholly!\n");
-            break;
-        }
+        
         ao_play(device, data_buffer, num);
+        ss_bytes_received += num;
     }
 
     // Close the audio device and shutdown the AO library
