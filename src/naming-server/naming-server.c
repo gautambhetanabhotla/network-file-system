@@ -1089,6 +1089,11 @@ int main(int argc, char *argv[])
 
     // Initialize Trie
     root = create_trie_node();
+    // make the root a file entry /
+    root->file_entry = (FileEntry *)malloc(sizeof(FileEntry));
+    root->file_entry->is_folder = 1;
+    strcpy(root->file_entry->filename, "/");
+
 
     // Initialize Cache
     cache = init_cache(CACHE_SIZE);
