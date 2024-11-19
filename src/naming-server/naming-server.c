@@ -921,9 +921,23 @@ void handle_client(int client_socket, char initial_request_type)
     content[content_length] = '\0';
     fprintf(stderr, "content: %s\n", content);
 
+    
     pthread_mutex_lock(&global_req_id_mutex);
     int storage_req_id = global_req_id++;
+    int fd = open("requests.txt", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0) {
+        perror("Error opening requests.txt");
+        free(content);
+        pthread_mutex_unlock(&global_req_id_mutex);
+        return;
+    }
+
+    char file_write_buffer[256];
+    int len = snprintf(file_write_buffer, sizeof(file_write_buffer), "%d request: id: %c req_id: %s content_length %s\n", storage_req_id, header[0], id_str, content_length_str);
+
+    fclose(fd);  
     pthread_mutex_unlock(&global_req_id_mutex);
+
     client_req_id = storage_req_id;
     
 
