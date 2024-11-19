@@ -1028,6 +1028,7 @@ void handle_client(int client_socket, char initial_request_type)
 
     char file_write_buffer[256];
     int len = snprintf(file_write_buffer, sizeof(file_write_buffer), "%d request: id: %c req_id: %s content_length %s\n", storage_req_id, header[0], id_str, content_length_str);
+    fwrite(file_write_buffer, 1, len, fd);
 
     fclose(fd);  
     pthread_mutex_unlock(&global_req_id_mutex);
