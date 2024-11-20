@@ -1153,7 +1153,9 @@ void list_paths(TrieNode *node, const char *base_path, char ***output, size_t *o
 // Register a Storage Server
 int register_storage_server(const char *ip, int port_c, int port_ns)
 {
+    // pthread_mutex_lock(&storage_server_mutex);
     int id = storage_server_count++;
+    // pthread_mutex_unlock(&storage_server_mutex);
     storage_servers[id].id = id;
     strcpy(storage_servers[id].ip_address, ip);
     storage_servers[id].port = port_ns;
