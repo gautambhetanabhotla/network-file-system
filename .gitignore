@@ -2,3 +2,13 @@ build/
 .vscode/
 .gdbinit
 storage/
+ns
+ss
+c
+paths.txt
+test.c
+*.swp
+*.out
+*.bin
+requests.txt
+testdir/

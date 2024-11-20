@@ -1,12 +1,48 @@
-all: client naming-server storage-server
+CC := /usr/bin/gcc
+CFLAGS := -g
 
-client: client.o
-	gcc -o client client.o
+.PHONY: all
+all: ns ss c
 
-naming-server: naming-server.o
-	gcc -o naming-server naming-server.o
+build:
+	mkdir build
 
-storage-server: storage-server.o
-	gcc -o storage-server storage-server.o
+build/client: | build
+	mkdir build/client
 
-unit-tests: unit-tests.o
+build/naming-server: | build
+	mkdir build/naming-server
+
+build/storage-server: | build
+	mkdir build/storage-server
+
+build/client/%.o: src/client/%.c | build/client
+	$(CC) $(CFLAGS) -c $< -o $@ -lao
+
+build/naming-server/%.o: src/naming-server/%.c | build/naming-server
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/storage-server/%.o: src/storage-server/%.c | build/storage-server
+	$(CC) $(CFLAGS) -c $< -o $@
+
+c: $(patsubst src/client/%.c, build/client/%.o, $(wildcard src/client/*.c)) | build/client
+	$(CC) $(CFLAGS) -o $@ $^ -lao
+
+ns: $(patsubst src/naming-server/%.c, build/naming-server/%.o, $(wildcard src/naming-server/*.c)) | build/naming-server
+	$(CC) $(CFLAGS) -o $@ $^
+
+ss: $(patsubst src/storage-server/%.c, build/storage-server/%.o, $(wildcard src/storage-server/*.c)) | build/storage-server
+	$(CC) $(CFLAGS) -o $@ $^
+
+.PHONY: clean
+clean:
+	rm -rf build c ns ss a.out
+
+.PHONY: reset
+reset:
+	rm -rf storage paths.txt *.bin
+
+req:
+	gcc tests/send_req_to_ss.c
+	./a.out 127.0.0.1 3000
+	rm -f a.out
