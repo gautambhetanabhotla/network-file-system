@@ -13,8 +13,13 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <semaphore.h>
+#include <signal.h>
 
 extern sem_t n_file_sem;
+
+void sigpipe_handler(int sig) {
+    // fprintf(stderr, "SIGPIPE received\n");
+}
 
 int nm_sockfd;
 
@@ -114,6 +119,8 @@ void* handle_ns(void* arg) {
 }
 
 int main(int argc, char* argv[]) {
+
+    // signal(SIGPIPE, sigpipe_handler);
 
     createStorageDirectory();
     sem_init(&n_file_sem, 0, 1);
