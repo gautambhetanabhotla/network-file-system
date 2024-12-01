@@ -216,86 +216,6 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
     fprintf(stderr, "Handled rws request %d %s %ld %c\n", client_req_id, content, content_length, request_type);
 }
 
-int delete_directory(const char *path, int client_req_id)
-{
-    // Use existing collect_paths function to gather all paths under the directory
-    char *response_content = NULL;
-    size_t response_content_length = 0;
-
-    pthread_mutex_lock(&trie_mutex);
-    FileEntry *dir_node = search_path(path, root);
-    pthread_mutex_unlock(&trie_mutex);
-
-    if (dir_node == NULL)
-    {
-        fprintf(stderr, "Directory does not exist: %s\n", path);
-        return -1;
-    }
-
-    // Collect all file and directory paths under the given directory
-    list_paths(dir_node, path, &response_content, &response_content_length);
-
-    if (response_content == NULL || response_content_length == 0)
-    {
-        fprintf(stderr, "No files or directories found under %s\n", path);
-        return -1;
-    }
-
-    // Split the collected paths into an array
-    char **paths = NULL;
-    size_t num_paths = 0;
-
-    char *saveptr;
-    char *line = strtok_r(response_content, "\n", &saveptr);
-    while (line != NULL)
-    {
-        paths = realloc(paths, (num_paths + 1) * sizeof(char *));
-        paths[num_paths] = strdup(line);
-        num_paths++;
-        line = strtok_r(NULL, "\n", &saveptr);
-    }
-
-    int result = 0;
-
-    // Delete each file or directory
-    for (size_t i = 0; i < num_paths; i++)
-    {
-        pthread_mutex_lock(&trie_mutex);
-        FileEntry *entry = search_path(paths[i], root);
-        pthread_mutex_unlock(&trie_mutex);
-
-        if (entry == NULL)
-            continue;
-
-        if (entry->is_folder == 0)
-        {
-            // It's a file
-            if (delete_file(paths[i], entry, client_req_id) < 0)
-            {
-                result = -1;
-            }
-        }
-        else
-        {
-            // It's a directory, remove from trie
-            pthread_mutex_lock(&trie_mutex);
-            remove_path(paths[i], root);
-            pthread_mutex_unlock(&trie_mutex);
-        }
-
-        free(paths[i]);
-    }
-
-    free(paths);
-    free(response_content);
-
-    // Remove the directory itself from the trie
-    pthread_mutex_lock(&trie_mutex);
-    remove_path(path, root);
-    pthread_mutex_unlock(&trie_mutex);
-
-    return result;
-}
 
 int delete_file(const char *path, FileEntry *entry, int client_req_id)
 {
@@ -662,35 +582,86 @@ void handle_delete_request(int client_socket, int client_req_id, char *content, 
 
     int result = 0;
 
+    // delete
+    remove_path(path, root);
+
+
+
     // Check if it's a file or a directory
     if (entry->is_folder == 0)
     {
-        // It's a file
-        // delete trie node from the trie
-        result = delete_file(path, entry, client_req_id);
-        // also delete from trie, make parent point to NULL
-        pthread_mutex_lock(&trie_mutex);
-        delete_from_trie(path, root);
-        pthread_mutex_unlock(&trie_mutex);
-    }
-    else
-    {
-        // It's a directory
-        result = delete_directory(path, client_req_id);
-        // also delete from trie, make parent point to NULL
-        pthread_mutex_lock(&trie_mutex);
-        delete_from_trie(path, root);
-        pthread_mutex_unlock(&trie_mutex);
+        // send delete header request to all storage servers that have the file
+        for (int i = 0; i < 3; i++)
+        {
+            int ss_id = entry->ss_ids[i];
+            if (ss_id == -1)
+                continue;
+
+            StorageServerInfo ss_info = storage_servers[ss_id];
+
+            int ss_socket = connect_to_storage_server(ss_info.ip_address, ss_info.client_port);
+            if (ss_socket < 0)
+            {
+                fprintf(stderr, "Failed to connect to storage server %d\n", ss_id);
+                continue;
+            }
+
+            // Prepare header
+            char header[31] = {0};
+            char req_id_str[10];
+            char content_length_str[21];
+
+            snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
+
+            // combine filepath and folderpath to get absolute path
+            char abs_path[4096];
+            snprintf(abs_path, sizeof(abs_path), "%s%s\n", folderpath, filename);
+            snprintf(content_length_str, sizeof(content_length_str), "%020ld", strlen(abs_path));
+
+
+            header[0] = '8'; 
+            strncpy(&header[1], req_id_str, 9);
+            strncpy(&header[10], content_length_str, 20);
+            header[30] = '\0';
+            fprintf(stderr, "header: %s\n", header);
+
+            // Send header and path
+            if (write_n_bytes(ss_socket, header, 30) != 30 ||
+                write_n_bytes(ss_socket, abs_path, strlen(abs_path) + 1) != (ssize_t)(strlen(abs_path) + 1))
+            {
+                fprintf(stderr, "Failed to send delete request to storage server %d\n", ss_id);
+                continue;
+            }
+
+            // Read response
+            char response_header[31];
+            if (read_n_bytes(ss_socket, response_header, 30) != 30)
+            {
+                fprintf(stderr, "Failed to read response from storage server %d\n", ss_id);
+                continue;
+            }
+
+            if (response_header[0] == '0') // '0' indicates success
+            {
+                result++;
+            }
+            else
+            {
+                fprintf(stderr, "Error response from storage server %d\n", ss_id);
+            }
+        }
+
+        
     }
 
-    if (result < 0)
-    {
-        send_error_response(client_socket, client_req_id, "Error: Delete operation failed\n");
-        return;
-    }
+    // if (result < 0)
+    // {
+    //     send_error_response(client_socket, client_req_id, "Error: Delete operation failed\n");
+    //     return;
+    // }
 
     // Send success response to client
-    send_success(client_socket, client_req_id, "Delete operation successful\n");
+    //send_success(client_socket, client_req_id, "Delete operation successful\n");
 }
 
 
