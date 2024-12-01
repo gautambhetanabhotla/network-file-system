@@ -427,7 +427,7 @@ int read_it(const char * filepath){
     // Convert the IP address from text to binary form
     if (inet_pton(AF_INET, ss_ip, &server_addr.sin_addr) <= 0) {
         perror("Invalid IP address format for storage server\n");
-        close(ss_socket);
+        //close(ss_socket);
         return -1;
     }
 
@@ -443,7 +443,7 @@ int read_it(const char * filepath){
         attempt++;
         if (attempt >= TIMEOUT){
             perror("Failed to connect to the storage server.\n");
-            close(ss_socket);
+            //close(ss_socket);
             return -1;
         }
     }
@@ -456,7 +456,7 @@ int read_it(const char * filepath){
     // Send the request to the server
     if (send_it(1, req_id, filepath, ss_socket) < 0) {
         perror("Failed to send request to storage server\n");
-        close(ss_socket);
+        //close(ss_socket);
         return -1;
     }
 
@@ -464,7 +464,7 @@ int read_it(const char * filepath){
     ss_bytes_received = recv(ss_socket, length_buffer, 30, 0);
     if (ss_bytes_received != 30) {
         perror("Failed to receive correct response from storage server\n");
-        close(ss_socket);
+        //close(ss_socket);
         return -1;
     }
 
@@ -475,7 +475,7 @@ int read_it(const char * filepath){
     // Check if the length is negative
     if (data_length < 0) {
         fprintf(stderr, "Error: Received negative data length\n"); //(%lld)\n", data_length
-        close(ss_socket);
+        //close(ss_socket);
         return -1;
     }
 
@@ -502,7 +502,7 @@ int read_it(const char * filepath){
         printf("%s", data_buffer);
     }
 
-    close(ss_socket); 
+    //close(ss_socket); 
     return 0;
 }
 
@@ -589,7 +589,7 @@ int stream(const char * filepath){
     // Convert the IP address from text to binary form
     if (inet_pton(AF_INET, ss_ip, &server_addr.sin_addr) <= 0) {
         perror("Invalid IP address format for storage server\n");
-        close(ss_socket);
+        //close(ss_socket);
         return -1;
     }
 
@@ -605,7 +605,7 @@ int stream(const char * filepath){
         attempt++;
         if (attempt >= TIMEOUT){
             perror("Failed to connect to the storage server.\n");
-            close(ss_socket);
+            //close(ss_socket);
             return -1;
         }
     }
@@ -618,7 +618,7 @@ int stream(const char * filepath){
     // Send the request to the server
     if (send_it(1, req_id, filepath, ss_socket) < 0) {
         perror("Failed to send request to storage server\n");
-        close(ss_socket);
+        //close(ss_socket);
         return -1;
     }
 
@@ -626,7 +626,7 @@ int stream(const char * filepath){
     ss_bytes_received = recv(ss_socket, length_buffer, 30, 0);
     if (ss_bytes_received != 30) {
         perror("Failed to receive correct response from storage server\n");
-        close(ss_socket);
+        //close(ss_socket);
         return -1;
     }
 
@@ -639,7 +639,7 @@ int stream(const char * filepath){
     // Check if the length is negative
     if (data_length < 0) {
         fprintf(stderr, "Error: Received negative data length\n"); //(%lld)\n", data_length
-        close(ss_socket);
+        //close(ss_socket);
         return -1;
     }
 
@@ -689,7 +689,7 @@ int stream(const char * filepath){
     // Close the audio device and shutdown the AO library
     ao_close(device);
     ao_shutdown();
-    close(ss_socket); 
+    //close(ss_socket); 
     return 0;
 }
 
@@ -717,7 +717,7 @@ void * write_async(void *args) {
             if (send(ss_socket, data_buffer, bytesRead, 0) < 0) {
                 printf("Failed to send complete data to storage server with socket number %d. %lld bytes sent successfully.\n", ss_socket, totalbytesread - bytesRead);
                 fclose(f);
-                close(ss_socket);
+                //close(ss_socket);
                 free(threadArgs);
                 return NULL;
             }
@@ -732,7 +732,7 @@ void * write_async(void *args) {
         if (send(ss_socket, data_buffer, BUFFER_SIZE, 0) < 0) {
             printf("Failed to send complete data to storage server at socket %d. %lld bytes sent successfully.\n", ss_socket, totalbytesread - bytesRead);
             fclose(f);
-            close(ss_socket);
+            //close(ss_socket);
             free(threadArgs);
             return NULL;
         }
@@ -743,7 +743,7 @@ void * write_async(void *args) {
     }
 
     fclose(f);
-    close(ss_socket);
+    //close(ss_socket);
     free(threadArgs);
     return NULL;
 }
@@ -840,7 +840,7 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
     // Convert the IP address from text to binary form
     if (inet_pton(AF_INET, ss_ip, &server_addr.sin_addr) <= 0) {
         perror("Invalid IP address format for storage server\n");
-        close(ss_socket);
+        //close(ss_socket);
         return -1;
     }
 
@@ -856,7 +856,7 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
         attempt++;
         if (attempt >= TIMEOUT){
             perror("Failed to connect to the storage server.\n");
-            close(ss_socket);
+            //close(ss_socket);
             return -1;
         }
     }
@@ -875,7 +875,7 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
     f = fopen(sourcefilepath, "rb");
     if (f == NULL) {
         perror("Error opening file");
-        close(ss_socket);
+        //close(ss_socket);
         return -1;
     }
 
@@ -886,7 +886,7 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
 
     if (fileSize == -1L) {
         perror("Error determining file size");
-        close(ss_socket);
+        //close(ss_socket);
         fclose(f);
         return -1;
     }
@@ -900,7 +900,7 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
     memset(ss_response, 0, sizeof(ss_response));
     if (recv(ss_socket, ss_response, 30, 0) < 30){
         printf("Failed to receive response from storage server.\n");
-        close(ss_socket);
+        //close(ss_socket);
         fclose(f);
         return -1;
     }
@@ -909,7 +909,7 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
 
     if (ss_response[0] != '1'){
         printf("Storage server did not accept the request.\n");
-        close(ss_socket);
+        //close(ss_socket);
         fclose(f);
         return -1;        
     }
@@ -928,7 +928,7 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
                 if (send(ss_socket, data_buffer,  bytesRead, 0)<0){
                     printf("Failed to send complete data to storage server. %lld bytes sent successfully.\n", totalbytesread - bytesRead);
                     fclose(f);
-                    close(ss_socket);
+                    //close(ss_socket);
                     return -1;
                 }
                 printf("\nSuccess! Data wholly sent!\n");
@@ -943,7 +943,7 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
             if (send(ss_socket, data_buffer,  BUFFER_SIZE, 0)<0){
                 printf("Failed to send complete data to storage server. %lld bytes sent successfully.\n", totalbytesread - bytesRead);
                 fclose(f);
-                close(ss_socket);
+                //close(ss_socket);
                 return -1;
             }
         }
@@ -951,14 +951,14 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
         if (ferror(f)) {
             perror("Error reading file");
             fclose(f);
-            close(ss_socket);
+            //close(ss_socket);
             return -1;
         }
 
         
 
         fclose(f);
-        close(ss_socket);
+        //close(ss_socket);
         return 0;
 
     }
@@ -978,7 +978,7 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
         if (pthread_create(&thread_id, NULL, write_async, threadArgs) != 0) {
             perror("Failed to create thread\n");
             free(threadArgs);
-            close(ss_socket);
+            //close(ss_socket);
             fclose(f);
             return -1;
         }

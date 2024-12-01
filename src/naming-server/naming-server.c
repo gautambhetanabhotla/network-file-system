@@ -211,7 +211,7 @@ void handle_rwsi_request(int client_socket, int client_req_id, char *content, lo
         }
         fprintf(stderr, "Sent storage server info to client: IP=%s, Port=%d\n", ss_info.ip_address, ss_info.client_port);
     }
-
+    
     free(path_buffer);
     fprintf(stderr, "Handled rwsi request %d %s %ld %c\n", client_req_id, content, content_length, request_type);
 }
