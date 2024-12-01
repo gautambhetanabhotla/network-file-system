@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 
 // FORMAT: YYYY-MM-DDTHH:MM:SS
 #define UNIX_START_TIME "1970-01-01T00:00:00"
@@ -328,9 +329,27 @@ void ss_info(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     }
     rewind(F);
 
+    struct stat statbuf;
+    if(lstat(f->rpath, &statbuf) == -1) {
+        perror("lstat");
+    }
+    char permsbuf[11];
+    sprintf(permsbuf, "%c%c%c%c%c%c%c%c%c%c",
+            (S_ISDIR(statbuf.st_mode)) ? 'd' : '.',
+            (statbuf.st_mode & S_IRUSR) ? 'r' : '-',
+            (statbuf.st_mode & S_IWUSR) ? 'w' : '-',
+            (statbuf.st_mode & S_IXUSR) ? 'x' : '-',
+            (statbuf.st_mode & S_IRGRP) ? 'r' : '-',
+            (statbuf.st_mode & S_IWGRP) ? 'w' : '-',
+            (statbuf.st_mode & S_IXGRP) ? 'x' : '-',
+            (statbuf.st_mode & S_IROTH) ? 'r' : '-',
+            (statbuf.st_mode & S_IWOTH) ? 'w' : '-',
+            (statbuf.st_mode & S_IXOTH) ? 'x' : '-');
+    permsbuf[10] = '\0';
+
     // Send the file info to the client
     char buffer[1024];
-    sprintf(buffer, "File size: %ld bytes\nNumber of lines: %d\nLast modified: %s\n", file_size, line_count, f->mtime);
+    sprintf(buffer, "File size: %ld bytes\nNumber of lines: %d\nLast modified: %s\nPermissions: %s\n", file_size, line_count, f->mtime, permsbuf);
     respond(nm_sockfd, fd, SUCCESS, requestID, (long)strlen(buffer));
     send(fd, buffer, strlen(buffer), 0);
 
