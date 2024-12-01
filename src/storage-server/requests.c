@@ -21,10 +21,6 @@ extern int nm_sockfd;
 char* requeststrings[] = {"read", "write", "stream", "info", "list", "create", "copy", "delete", "sync", "hello", "created"};
 char* exitstatusstrings[] = {"success", "acknowledge", "file doesn't exist", "incomplete write", "file already exists", "nm chose the wrong ss", "an error from SS's side", "connection refused"};
 
-void ns_synchronize(int fd, char* vpath, int requestID) {
-    
-}
-
 void respond(int nmfd, int clfd, enum exit_status status, int requestID, long contentLength) {
     char header[11] = {'\0'}; header[0] = '0' + status;
     sprintf(header + 1, "%d", requestID);
@@ -109,6 +105,9 @@ void* handle_client(void* arg) {
             break;
         case INFO:
             ss_info(client_sockfd, vpath, requestID, fp, remainingContentLength);
+            break;
+        case SYNC:
+            ss_sync(client_sockfd, vpath, requestID, fp, remainingContentLength);
             break;
         default:
             send(client_sockfd, "tf u sending brother??????????\n", strlen("tf u sending brother??????????\n"), 0);
@@ -336,4 +335,46 @@ void ss_info(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     send(fd, buffer, strlen(buffer), 0);
 
     fclose(F);
+}
+
+void ss_sync(int fd, char* vpath, int requestID, char* tbf, int rcl) {
+    struct file* f = get_file(vpath);
+    if(!f) {
+        respond(nm_sockfd, fd, E_FILE_DOESNT_EXIST, requestID, 0);
+        return;
+    }
+    FILE* F = fopen(f->rpath, "r");
+    if(!F) {
+        respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0);
+        return;
+    }
+
+    long filesize;
+    fseek(F, 0, SEEK_END);
+    filesize = ftell(F);
+    rewind(F);
+
+    char* portptr;
+    char* ip = __strtok_r(tbf, "\n", &portptr);
+    __strtok_r(NULL, "\n", &tbf);
+    int port = atoi(portptr);
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = inet_addr(ip);
+    int destfd = socket(AF_INET, SOCK_STREAM, 0);
+    if(connect(destfd, (struct sockaddr*) &addr, sizeof(addr)) < 0) {
+        respond(nm_sockfd, fd, E_CONN_REFUSED, requestID, 0);
+    }
+    request(-1, destfd, WRITE, filesize + strlen(vpath) + 1);
+    char buf[8193]; int n = 0;
+    char pathbuf[MAXPATHLENGTH];
+    sprintf(pathbuf, "%s\n", vpath);
+    send(destfd, pathbuf, strlen(pathbuf), 0);
+    while(!feof(F)) {
+        n = fread(buf, 1, 8192, F);
+        if(n > 0) send(destfd, buf, n, 0);
+    }
+    fclose(F);
+    respond(nm_sockfd, fd, SUCCESS, requestID, 0);
 }
