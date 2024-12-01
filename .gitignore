@@ -12,3 +12,4 @@ test.c
 *.bin
 requests.txt
 testdir/
+store/
