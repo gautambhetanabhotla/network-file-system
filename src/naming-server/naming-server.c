@@ -191,12 +191,14 @@ void handle_rws_request(int client_socket, int client_req_id, char *content, lon
         char content_length_str[21];
 
         snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
+        printf("req_id_str: %s\n", req_id_str);
         snprintf(content_length_str, sizeof(content_length_str), "%020zu", response_content_length);
 
         header[0] = '0'; // Acknowledgment byte indicating success
         strncpy(&header[1], req_id_str, 9);
         strncpy(&header[10], content_length_str, 20);
         header[30] = '\0';
+        printf("header: %s\n", header);
 
         // Send header and content to client
         if (write_n_bytes(client_socket, header, 30) != 30 ||
@@ -413,21 +415,54 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
         file_path[strlen(file_path)] = '\0';
         if (to_create[strlen(to_create) - 1] == '/')
         {
+            char success = '0';
             FileEntry *file = insert_path(file_path, NULL, 0, root);
             if (file != NULL)
             {
+                success = '0';
                 file->is_folder = 1;
+            }else{
+                success = '1';
+            }
+            // send success response to client, 30 byte header, 1st byte is the success byte, 9 bytes request id, 20 bytes content length
+            char header[31]; // 30 bytes + null terminator
+            char req_id_str[10];
+            char content_length_str[21];
+            memset(header, 0, sizeof(header));
+            memset(req_id_str, 0, sizeof(req_id_str));
+            memset(content_length_str, 0, sizeof(content_length_str));
+            // add content length to content length string as character
+            snprintf(content_length_str, sizeof(content_length_str), "%d", 0);
+            fprintf(stderr, "content_length_str: %s\n", content_length_str);
+            header[0] = success;
+            // set request id string to client_req_id
+            snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
+            fprintf(stderr, "req_id_str: %s\n", req_id_str);
+            // set header to success byte, request id and content length
+            strncpy(&header[1], req_id_str, strlen(req_id_str));
+            strncpy(&header[10], content_length_str, strlen(content_length_str));
+            header[30] = '\n';
+            fprintf(stderr, "header: %s\n", header);
+            // send header to client
+            if (write_n_bytes(client_socket, header, 30) != 30)
+            {
+                fprintf(stderr, "Failed to send response to client\n");
+                return;
             }
         }
         else
         {
-
+            
             // set timestamp
             time_t t = time(NULL);
             struct tm tm = *localtime(&t);
             char timestamp[20];
             strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%S", &tm);
             fprintf(stderr, "timestamp: %s\n", timestamp);
+            FileEntry *file = insert_path(file_path, NULL, 0, root);
+            file->is_folder = 0;
+            set_file_entry_timestamp(file, timestamp);
+
 
             char file_path[4096];
 
