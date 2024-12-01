@@ -1698,6 +1698,7 @@ int main(int argc, char *argv[])
     load_trie("trie_data.bin", root);
 
     load_cache("cache_data.bin", cache);
+    root->file_entry->is_folder = 1;
 
     // Set up signal handlers to save data on exit
     signal(SIGINT, signal_handler);
