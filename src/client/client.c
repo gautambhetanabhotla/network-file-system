@@ -267,7 +267,7 @@ int info(const char * filepath){
     
     char response[BUFFER_SIZE];
     char request[BUFFER_SIZE];
-    if (send_it(1, 1, filepath, ns_socket) < 0){
+    if (send_it(4, 1, filepath, ns_socket) < 0){
         perror("Failed to send request to naming server.\n");
         return -1;
     }
@@ -370,7 +370,7 @@ int info(const char * filepath){
     long long int data_length;
 
     // Send the request to the server
-    if (send_it(1, req_id, filepath, ss_socket) < 0) {
+    if (send_it(4, req_id, filepath, ss_socket) < 0) {
         perror("Failed to send request to storage server\n");
         //close(ss_socket);
         return -1;
