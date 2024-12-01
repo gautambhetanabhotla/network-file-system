@@ -378,7 +378,7 @@ int info(const char * filepath){
 
     // Receive the 30-byte header
     ss_bytes_received = recv(ss_socket, length_buffer, 30, 0);
-    if (ss_bytes_received != 30) {
+    if (ss_bytes_received <  30) {
         perror("Failed to receive correct response from storage server\n");
         //close(ss_socket);
         return -1;
@@ -472,7 +472,7 @@ int read_it(const char * filepath){
     ns_bytes_received = recv(ns_socket, response, 30, 0);
     
     
-    if (ns_bytes_received != 30) {
+    if (ns_bytes_received <  30) {
         perror("Failed to receive response from naming server.\n");
         return -1;
     }
@@ -573,7 +573,7 @@ int read_it(const char * filepath){
 
     // Receive the 30-byte header
     ss_bytes_received = recv(ss_socket, length_buffer, 30, 0);
-    if (ss_bytes_received != 30) {
+    if (ss_bytes_received <  30) {
         perror("Failed to receive correct response from storage server\n");
         //close(ss_socket);
         return -1;
@@ -590,7 +590,12 @@ int read_it(const char * filepath){
         return -1;
     }
 
+    if (data_length == 0) {
+        printf("\nSuccess! Data read wholly!\n");
+        return 0;
+    }
     ss_bytes_received = 0;
+
     int num;
     while(1){
         // Receive the actual data
@@ -631,7 +636,7 @@ int stream(const char * filepath){
     ns_bytes_received = recv(ns_socket, response, 30, 0);
     
     
-    if (ns_bytes_received != 30) {
+    if (ns_bytes_received <  30) {
         perror("Failed to receive response from naming server.\n");
         return -1;
     }
@@ -735,7 +740,7 @@ int stream(const char * filepath){
 
     // Receive the 30-byte header
     ss_bytes_received = recv(ss_socket, length_buffer, 30, 0);
-    if (ss_bytes_received != 30) {
+    if (ss_bytes_received < 30) {
         perror("Failed to receive correct response from storage server\n");
         //close(ss_socket);
         return -1;
@@ -885,7 +890,7 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
     response[ns_bytes_received] = '\0';
     
     
-    if (ns_bytes_received != 30) {
+    if (ns_bytes_received < 30) {
         perror("Failed to receive response from naming server.\n");
         return -1;
     }
