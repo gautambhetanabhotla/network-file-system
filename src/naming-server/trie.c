@@ -207,49 +207,28 @@ void load_trie(const char *filename, TrieNode *root)
 }
 
 // Remove a path from the Trie
-void remove_path(const char *path, TrieNode *root) {
-    TrieNode *current = root;
-    //TrieNode *parent = NULL;
-    //unsigned char last_index = 0;
-
-    // Stack to keep track of the path
-    TrieNode *node_stack[MAX_PATH_LENGTH];
-    int index_stack[MAX_PATH_LENGTH];
-    int depth = 0;
-
-    for (int i = 0; path[i]; i++) {
-        unsigned char index = (unsigned char)path[i];
-        if (!current->children[index])
-            return;  // Path not found
-
-        node_stack[depth] = current;
-        index_stack[depth] = index;
-        depth++;
-
-        current = current->children[index];
+void remove_path(const char *path, TrieNode *root)
+{
+    if (path[strlen(path) - 1] != '/')
+    {
+        // means it is a folder
     }
-
-    if (current->file_entry) {
-        free(current->file_entry);
-        current->file_entry = NULL;
-
-        // Remove nodes if they are empty
-        for (int i = depth - 1; i >= 0; i--) {
-            TrieNode *node = node_stack[i]->children[index_stack[i]];
-            if (node->file_entry)
-                break;
-            int has_children = 0;
-            for (int j = 0; j < 256; j++) {
-                if (node->children[j]) {
-                    has_children = 1;
-                    break;
-                }
-            }
-            if (has_children)
-                break;
-            free(node);
-            node_stack[i]->children[index_stack[i]] = NULL;
+    TrieNode *current = root;
+    if(strlen(path)==1){
+        fprintf(stderr, "only one character, is it root?\n");
+        if(path[0]=='/'){
+            fprintf(stderr, "omg its root you go girl!\n");
+            return ;
         }
     }
+    for (int i = 1; path[i]; i++)
+    {
+        unsigned char index = (unsigned char)path[i];
+        if (!current->children[index])
+            return; // Not found
+        current = current->children[index];
+    }
+    if (current->file_entry)
+        current = NULL;
+    return; // Not found
 }
-
