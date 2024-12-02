@@ -65,6 +65,7 @@ typedef struct {
     int path_count;
     int is_active;
     pthread_mutex_t ss_mutex;
+    int offline;
 } StorageServerInfo;
 
 // Client Request Structure
