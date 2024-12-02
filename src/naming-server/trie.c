@@ -32,12 +32,12 @@ FileEntry* insert_path(const char *path, int *storage_server_ids, int num_chosen
     }
     for (int i = 1; path[i]; i++)
     {
-        if(current == NULL){
-            return NULL;
-        }
         if(current->file_entry && (current->file_entry->is_folder==0))
         {
-            return NULL;
+            if(i==strlen(path)-2){
+                fprintf(stderr, "parent is not a folder\n");
+                return NULL;
+            }
         }
         unsigned char index = (unsigned char)path[i];
         // need to check if the parent is a directory
@@ -69,6 +69,9 @@ FileEntry* insert_path(const char *path, int *storage_server_ids, int num_chosen
             current->file_entry->ss_ids[i] = storage_server_ids[i];
             storage_servers[storage_server_ids[i]].file_count++;
             fprintf(stderr, "file count: %d\n", storage_servers[storage_server_ids[i]].file_count);
+        }
+        for(int i = num_chosen; i<3; i++){
+            current->file_entry->ss_ids[i] = -1;
         }
     }
 
@@ -105,33 +108,6 @@ FileEntry* search_path(const char *path, TrieNode *root)
         return current->file_entry;
     return NULL; // Not found
 }
-
-// implement a search folder function similar to search_path
-// TrieNode* search_folder(const char *path, TrieNode *root)
-// {
-//     TrieNode *current = root;
-//     if (path[strlen(path) - 1] != '/')
-//     {
-//         return NULL;
-//     }
-//     if(strlen(path)==1){
-//         fprintf(stderr, "only one character, is it root?\n");
-//         if(path[0]=='/'){
-//             fprintf(stderr, "omg its root you go girl!\n");
-//             return root->file_entry;
-//         }
-//     }
-//     for (int i = 1; path[i]; i++)
-//     {
-//         unsigned char index = (unsigned char)path[i];
-//         if (!current->children[index])
-//             return NULL; // Not found
-//         current = current->children[index];
-//     }
-//     if(current->file_entry && (current->file_entry->is_folder==1))
-//         return current;
-//     return NULL;
-// }
 
 void save_node(TrieNode * node, FILE * file)
     {
@@ -229,6 +205,6 @@ void remove_path(const char *path, TrieNode *root)
         current = current->children[index];
     }
     if (current->file_entry)
-        current = NULL;
+        current->file_entry = NULL;
     return; // Not found
 }
