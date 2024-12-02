@@ -104,6 +104,24 @@ ssize_t read_n_bytes(int socket_fd, void *buffer, size_t n)
         {
             // Connection closed
             fprintf(stderr, "Connection closed by peer\n");
+            // get ip and port from socket_fd and check storage server list , and set offline to 1
+            // get ip and port
+            struct sockaddr_in addr;
+            socklen_t addr_len = sizeof(addr);
+            getpeername(socket_fd, (struct sockaddr *)&addr, &addr_len);
+            char ip_str[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &addr.sin_addr, ip_str, INET_ADDRSTRLEN);
+            int port = ntohs(addr.sin_port);
+            // check storage server list
+            for (int i = 0; i < storage_server_count; i++)
+            {
+                if (strcmp(storage_servers[i].ip_address, ip_str) == 0 && storage_servers[i].port == port)
+                {
+                    storage_servers[i].offline = 1;
+                    fprintf(stderr, "Storage server %s:%d is offline\n", ip_str, port);
+                    break;
+                }
+            }
             return -1;
         }
         total_read += bytes_read;
@@ -208,7 +226,22 @@ void handle_rsi_request(int client_socket, int client_req_id, char *content, lon
         return;
         }
         // Get storage server information
-        int id = file->ss_ids[0];
+        // check first online storage server
+        int id = -1;
+        for (int i = 0; i < 3; i++)
+        {
+            if (file->ss_ids[i] != -1 && storage_servers[file->ss_ids[i]].offline == 0)
+            {
+                id = file->ss_ids[i];
+                break;
+            }
+        }
+        if(id == -1){
+            fprintf(stderr, "No online storage servers found for file\n");
+            send_error_response(client_socket, client_req_id, "No online storage servers found for file\n");
+            free(path_buffer);
+            return;
+        }
         StorageServerInfo ss_info = storage_servers[id];
         // Prepare response content with IP and Port
         char response_content[256] = {0};
@@ -267,6 +300,22 @@ void handle_write_request(int client_socket, int client_req_id, char* content, l
     } 
     else {
         // Collect storage server info
+        // check if any storage server is offline
+        int offline = 0;
+        for (int i = 0; i < 3; i++)
+        {
+            if (file->ss_ids[i] != -1 && storage_servers[file->ss_ids[i]].offline == 1)
+            {
+                offline = 1;
+                break;
+            }
+        }
+        if(offline == 1){
+            fprintf(stderr, "One or more storage servers are offline\n");
+            send_error_response(client_socket, client_req_id, "One or more storage servers are offline\n");
+            free(path_buffer);
+            return;
+        }
         StorageServerInfo ss_info[3];
         int server_count = 0;
         for (int i = 0; i < 3; i++)
