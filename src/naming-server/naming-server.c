@@ -170,7 +170,7 @@ void signal_handler(int sig)
     exit(0);
 }
 
-void handle_rwsi_request(int client_socket, int client_req_id, char *content, long content_length, char request_type)
+void handle_rsi_request(int client_socket, int client_req_id, char *content, long content_length, char request_type)
 {
     char *path_buffer = malloc(content_length + 1);
     if (path_buffer == NULL)
@@ -228,8 +228,67 @@ void handle_rwsi_request(int client_socket, int client_req_id, char *content, lo
     }
 
     free(path_buffer);
-    fprintf(stderr, "Handled rwsi request %d %s %ld %c\n", client_req_id, content, content_length, request_type);
+    fprintf(stderr, "Handled rsi request %d %s %ld %c\n", client_req_id, content, content_length, request_type);
 }
+
+void handle_write_request(int client_socket, int client_req_id, char* content, long content_length){
+    char *path_buffer = malloc(content_length + 1);
+    if (path_buffer == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for data buffer\n");
+        // close(client_socket);
+        return;
+    }
+    int total_read = 0;
+    fprintf(stderr, "content_length: %ld\n", content_length);
+    fprintf(stderr, "content: %s\n", content);
+    // content[content_length-1] = '\0';
+
+    FileEntry *file = search_path(content, root);
+    if (file == NULL)
+    {
+        fprintf(stderr, "path not found\n");
+        send_error_response(client_socket, client_req_id, "path not found\n");
+    } 
+    else {
+        // Collect storage server info
+        StorageServerInfo ss_info[3];
+        int server_count = 0;
+        for (int i = 0; i < 3; i++)
+        {
+            if (file->ss_ids[i] != -1)
+            {
+                int ss_index = file->ss_ids[i];
+                ss_info[server_count++] = storage_servers[ss_index];
+            }
+        }
+
+        if (server_count == 0)
+        {
+            fprintf(stderr, "No storage servers found for file\n");
+            send_error_response(client_socket, client_req_id, "No storage servers found for file\n");
+            free(path_buffer);
+            return;
+        }
+
+        // Prepare response
+        char response[1024] = {0};
+        for (int i = 0; i < server_count; i++)
+        {
+            char server_info[256];
+            snprintf(server_info, sizeof(server_info), "%s %d\n", ss_info[i].ip_address, ss_info[i].client_port);
+            strncat(response, server_info, sizeof(response) - strlen(response) - 1);
+        }
+
+        // Send response to client
+        send_success(client_socket, client_req_id, response);
+        fprintf(stderr, "Sent storage server info to client: %s\n", response);
+    }
+
+    free(path_buffer);
+    fprintf(stderr, "Handled write request %d %s %ld\n", client_req_id, content, content_length);
+}
+
 
 int delete_file(const char *path, FileEntry *entry, int client_req_id)
 {
@@ -1466,12 +1525,10 @@ void handle_client(int client_socket, char initial_request_type)
             fprintf(stderr, "Received CREATE request from client\n");
             handle_create_request(client_socket, client_req_id, content, content_length);
         }
-        else if (request_type == '1' || request_type == '3' || request_type == '2' || request_type == '4')
+        else if (request_type == '1' || request_type == '3' || request_type == '4')
         {
             if (request_type == '1')
                 fprintf(stderr, "Received READ request from client\n");
-            if (request_type == '2')
-                fprintf(stderr, "Received WRITE request from client\n");
             if (request_type == '3')
                 fprintf(stderr, "Received STREAM request from client\n");
             if (request_type == '4')
@@ -1480,16 +1537,17 @@ void handle_client(int client_socket, char initial_request_type)
             fprintf(stderr, "tokenised content: %s\n", content);
             content_length = strlen(content);
             fprintf(stderr, "content_length: %ld\n", content_length);
-            handle_rwsi_request(client_socket, client_req_id, content, content_length, request_type);
+            handle_rsi_request(client_socket, client_req_id, content, content_length, request_type);
         }
-        // else if (request_type == '4')
-        // {
-        //     content = strtok_r(content, "\n", &saveptr);
-        //     fprintf(stderr, "tokenised content: %s\n", content);
-        //     content_length = strlen(content);
-        //     fprintf(stderr, "Received INFO request from client\n");
-        //     handle_info_request(client_socket, client_req_id, content, content_length);
-        // }
+        else if (request_type == '2')
+        {
+            fprintf(stderr, "Received WRITE request from client\n");
+            content = strtok_r(content, "\n", &saveptr);
+            fprintf(stderr, "tokenised content: %s\n", content);
+            content_length = strlen(content);
+            fprintf(stderr, "content_length: %ld\n", content_length);
+            handle_write_request(client_socket, client_req_id, content, content_length);
+        }
         else if (request_type == '5')
         {
             fprintf(stderr, "Received LIST request from client\n");
@@ -1601,7 +1659,7 @@ int main(int argc, char *argv[])
 
     // Set Options
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT,
-                   &opt, sizeof(opt)))
+                    &opt, sizeof(opt)))
     {
         perror("Setsockopt");
         exit(EXIT_FAILURE);
