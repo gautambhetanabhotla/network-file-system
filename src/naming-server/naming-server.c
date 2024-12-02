@@ -186,6 +186,10 @@ void handle_rsi_request(int client_socket, int client_req_id, char *content, lon
 
     FileEntry *file = search_path(content, root);
     // check if request type is 3 and then if yes, check if the file contains .pcm or .mpe
+    if(file->is_folder == 0){
+        send_error_response(client_socket, client_req_id, "Error: Path is not a folder\n");
+        return;
+    }
     if (request_type == '3')
     {
         if (strstr(content, ".pcm") == NULL && strstr(content, ".mp3") == NULL)
