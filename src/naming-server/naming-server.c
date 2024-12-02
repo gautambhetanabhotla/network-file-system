@@ -185,11 +185,8 @@ void handle_rsi_request(int client_socket, int client_req_id, char *content, lon
     // content[content_length-1] = '\0';
 
     FileEntry *file = search_path(content, root);
+
     // check if request type is 3 and then if yes, check if the file contains .pcm or .mpe
-    if(file->is_folder == 0){
-        send_error_response(client_socket, client_req_id, "Error: Path is not a folder\n");
-        return;
-    }
     if (request_type == '3')
     {
         if (strstr(content, ".pcm") == NULL && strstr(content, ".mp3") == NULL)
@@ -206,6 +203,10 @@ void handle_rsi_request(int client_socket, int client_req_id, char *content, lon
     }
     else
     {
+        if(file->is_folder == 1){
+        send_error_response(client_socket, client_req_id, "Error: Path is a folder\n");
+        return;
+        }
         // Get storage server information
         int id = file->ss_ids[0];
         StorageServerInfo ss_info = storage_servers[id];
@@ -660,12 +661,14 @@ void handle_delete_request(int client_socket, int client_req_id, char *content, 
     FileEntry *entry = search_path(path, root);
     pthread_mutex_unlock(&trie_mutex);
 
-    int is_folder = entry->is_folder;
     if (entry == NULL)
     {
         send_error_response(client_socket, client_req_id, "Error: Path does not exist\n");
         return;
     }
+
+    int is_folder = entry->is_folder;
+
 
     // 4. Check if the path is '/' (home)
     if (strcmp(path, "/") == 0)
