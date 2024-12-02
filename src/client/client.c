@@ -124,7 +124,7 @@ int ns_connect(const char *server_ip, int server_port) {
     // Convert and set the IP address
     if (inet_pton(AF_INET, server_ip, &server_address.sin_addr) <= 0) {
         perror("Invalid naming server address/ address not supported");
-        close(ns_socket);
+        //(close_ns_socket);
         return -1;
     }
 
@@ -144,7 +144,7 @@ int ns_connect(const char *server_ip, int server_port) {
     }
 
     printf("Connection failed. Exiting...\n");
-    close(ns_socket);
+    //(close_ns_socket);
     ns_socket = -1; // Reset the socket to indicate failure
     return -1;
 }
@@ -1261,7 +1261,7 @@ int main(int argc, char* argv[]) {
             help();
         }
         else if (strcmp(operation, "STOP") == 0 && num_args == 1) {
-            close(ns_socket);
+            //(close_ns_socket);
             printf("Goodbye!\n");
             exit(0);
         }
