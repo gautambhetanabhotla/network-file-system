@@ -11,6 +11,7 @@ TrieNode *create_trie_node()
             node->children[i] = NULL;
         }
     }
+    node->deleted = 0;
     return node;
 }
 
@@ -274,7 +275,10 @@ void remove_path(const char *path, TrieNode *root)
             return; // Not found
         current = current->children[index];
     }
-    if (current->file_entry)
+    if (current->file_entry){
         current->file_entry = NULL;
+        current->deleted = 1;
+    }
+        
     return; // Not found
 }
