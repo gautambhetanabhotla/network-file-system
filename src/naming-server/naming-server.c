@@ -1246,6 +1246,54 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
             // Assuming you have a function to set the timestamp
             set_file_entry_timestamp(file, timestamp);
             fprintf(stderr, "Inserted path: %s with timestamp %s\n", path, file->last_modified);
+            for (int i = 0; i < num_chosen; i++)
+            {
+                int ssid = chosen_servers[i];
+                if (ssid == ss_id)
+                    continue;
+                StorageServerInfo ss_info = storage_servers[ssid];
+                int ss_socket = connect_to_storage_server(ss_info.ip_address, ss_info.client_port);
+                if (ss_socket < 0)
+                {
+                    fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
+                    continue;
+                }
+                // send 30 bytes header: 1 byte operation type, 9 bytes request id, 20 bytes content length
+                // generate new content length that is length of filepath + new line + timestamp size  using strncpy
+                char header[31]; // 30 bytes + null terminator
+                memset(header, 0, sizeof(header));
+                char req_id_str[10];
+                memset(req_id_str, 0, sizeof(req_id_str));
+                char content_length_str[21];
+                memset(content_length_str, 0, sizeof(content_length_str));
+                // content should be the path and the current timestamp in the format path timestamp
+                char content[4096];
+                // generate timestamp
+                time_t t = time(NULL);
+                struct tm tm = *localtime(&t);
+                char timestamp[20];
+                memset(timestamp, 0, sizeof(timestamp));
+                strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%S", &tm);
+                snprintf(content, sizeof(content), "%s\n%s", path, timestamp);
+                // add content length to content length string as character
+                snprintf(content_length_str, sizeof(content_length_str), "%ld", strlen(content));
+                fprintf(stderr, "content_length_str: %s\n", content_length_str);
+                header[0] = '6'; // '6' for CREATE
+                // set request id string to client_req_id
+                snprintf(req_id_str, sizeof(req_id_str), "%09d", global_req_id);
+                fprintf(stderr, "req_id_str: %s\n", req_id_str);
+                // set header to success byte, request id and content length
+                strncpy(&header[1], req_id_str, strlen(req_id_str));
+                strncpy(&header[10], content_length_str, strlen(content_length_str));
+                header[30] = '\n';
+                fprintf(stderr, "header: %s\n", header);
+                // send header to storage server
+                if (write_n_bytes(ss_socket, header, 30) != 30)
+                {
+                    fprintf(stderr, "Failed to send response to client\n");
+                    return;
+                }
+            }
         }
 
         // Move to the next line
