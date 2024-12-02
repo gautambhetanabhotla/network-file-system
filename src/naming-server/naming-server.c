@@ -411,7 +411,7 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             int chosen_servers[3];
             int num_chosen = 0;
             choose_least_full_servers(chosen_servers, &num_chosen);
-            FileEntry *file = insert_path(file_path, chosen_servers, num_chosen, root);
+            FileEntry *file = insert_path_forc(file_path, chosen_servers, num_chosen, root);
             if (file != NULL)
             {
                 success = '0';
@@ -459,7 +459,7 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             int chosen_servers[3];
             int num_chosen = 0;
             choose_least_full_servers(chosen_servers, &num_chosen);
-            FileEntry *file = insert_path(file_path, chosen_servers, num_chosen, root);
+            FileEntry *file = insert_path_forc(file_path, chosen_servers, num_chosen, root);
             file->is_folder = 0;
             set_file_entry_timestamp(file, timestamp);
 
@@ -943,7 +943,7 @@ void handle_copy_request(int client_socket, int client_req_id, char *content, lo
             char *destpath = malloc(strlen(folderpath) + strlen(filename) + 1);
             snprintf(destpath, strlen(folderpath) + strlen(filename), "%s%s", folderpath, filename);
             destpath[strlen(folderpath) + strlen(filename)] = '\0';
-            insert_path(destpath, ss_id, num_chosen, root);
+            insert_path_forc(destpath, ss_id, num_chosen, root);
             fprintf(stderr, "File copied successfully\n");
             if (send_success(client_socket, client_req_id, "File copied successfully\n") < 0)
             {
@@ -1167,7 +1167,7 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
                 fprintf(stderr, "%d ", chosen_servers[i]);
             }
             fprintf(stderr, "\n");
-            FileEntry *file = insert_path(path, chosen_servers, num_chosen, root);
+            FileEntry *file = insert_path_forss(path, chosen_servers, num_chosen, root);
             if (file)
             {
                 file->is_folder = 0;
