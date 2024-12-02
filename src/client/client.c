@@ -1013,10 +1013,10 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
         snprintf(destfilepath2,"%s\n%d\n%s\n%d\n", ss_ip2, ss_portnum2, ss_ip3, ss_portnum3);        
     }
     else if(ss_ip2 != NULL){
-        snprintf(destfilepath2, "%s\n%d\n-1\n-1\n", ss_ip2, ss_portnum2);
+        snprintf(destfilepath2, "%s\n%d\n127.0.0.1\n-1\n", ss_ip2, ss_portnum2);
     }
     else{
-        snprintf(destfilepath2, "-1\n-1\n-1\n-1\n", ss_ip2, ss_portnum2);
+        snprintf(destfilepath2, "127.0.0.1\n-1\n127.0.0.1\n-1\n", ss_ip2, ss_portnum2);
     }
 
     strcpy(&destfilepath2[strlen(destfilepath2)], destfilepath);
@@ -1159,7 +1159,7 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
 
 void help(){
     printf("Available commands:\n");
-    printf("CREATE <folderpath> <folderpath/filepath>\nREAD <filepath>\nWRITE <localsourcefilepath> <destfilepath>\nDELETE <folderpath> <folderpath/filepath>\nCOPY <sourcepath(file/folder)> <destpath(file/folder)>\nINFO <filepath>\nSTREAM <audiofilepath>\nSTOP\nHELP\n");
+    printf("CREATE <folderpath> <folderpath/filepath>\nREAD <filepath>\nWRITE <localsourcefilepath> <destfilepath>\nDELETE <folderpath> <folderpath/filepath>\nCOPY <sourcepath(file/folder)> <destpath(file/folder)>\nINFO <filepath>\nSTREAM <audiofilepath>\nSTOP\nHELP\nThese are the available commands\n");
     return;
 }
 
