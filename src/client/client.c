@@ -930,6 +930,21 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
     }
     ss_portnum = atoi(port_str);     // Convert port string to integer
 
+    char * ss_ip2;
+    int ss_portnum2;
+
+    char * ss_ip3;
+    int ss_portnum3;
+
+    ss_ip2 = strtok_r(response, "\n", &saveptr);
+    port_str = strtok_r(NULL, "\n", &saveptr);
+
+    ss_portnum2 = atoi(port_str);
+
+    ss_ip3 = strtok_r(response, "\n", &saveptr);
+    port_str = strtok_r(NULL, "\n", &saveptr);
+
+    ss_portnum3 = atoi(port_str);
 
     // Check if is less than 0
     if (ss_portnum < 0) {
@@ -981,10 +996,12 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
     char data_buffer[BUFFER_SIZE]; // To store the actual data
     ssize_t ss_bytes_received = 0;
     long long int data_length;
-    char * destfilepath2 = (char *) malloc(sizeof(char) * (strlen(destfilepath) + 2));
-    strcpy(destfilepath2, destfilepath);
-    destfilepath2[strlen(destfilepath)] = '\n';
-    destfilepath2[strlen(destfilepath) + 1] = '\0';
+    char * destfilepath2 = (char *) malloc(sizeof(char) * (strlen(destfilepath) + 100));
+    snprintf("%s\n%d\n%s\n%d\n", ss_ip2, ss_portnum2, ss_ip3, ss_portnum3);
+
+    strcpy(&destfilepath2[strlen(destfilepath2)], destfilepath);
+    destfilepath2[strlen(destfilepath2)] = '\n';
+    destfilepath2[strlen(destfilepath2)] = '\0';
 
 
 
