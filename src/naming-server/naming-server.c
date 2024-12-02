@@ -118,7 +118,7 @@ ssize_t read_n_bytes(int socket_fd, void *buffer, size_t n)
                 if (strcmp(storage_servers[i].ip_address, ip_str) == 0 && storage_servers[i].port == port)
                 {
                     storage_servers[i].offline = 1;
-                    fprintf(stderr, "Storage server %s:%d is offline\n", ip_str, port);
+                    fprintf(stderr, "Storage server id %d, %s:%d is offline\n", i, ip_str, port);
                     break;
                 }
             }
@@ -304,7 +304,10 @@ void handle_write_request(int client_socket, int client_req_id, char* content, l
         int offline = 0;
         for (int i = 0; i < 3; i++)
         {
-            if (file->ss_ids[i] != -1 && storage_servers[file->ss_ids[i]].offline == 1)
+            if(file->ss_ids[i] == -1){
+                continue;
+            }
+            if (storage_servers[file->ss_ids[i]].offline == 1)
             {
                 offline = 1;
                 break;
@@ -1252,8 +1255,17 @@ void handle_storage_server(int client_socket, char *id, int port, char *paths)
                 if (ssid == ss_id)
                     continue;
                 StorageServerInfo ss_info = storage_servers[ssid];
-                int ss_socket = connect_to_storage_server(ss_info.ip_address, ss_info.client_port);
+                struct sockaddr_in storage_server_addr;
+                storage_server_addr.sin_family = AF_INET;
+                storage_server_addr.sin_port = htons(ss_info.client_port);
+                storage_server_addr.sin_addr.s_addr = inet_addr(ss_info.ip_address);
+                int ss_socket = socket(AF_INET, SOCK_STREAM, 0);
                 if (ss_socket < 0)
+                {
+                    fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
+                    continue;
+                }
+                if(connect(ss_socket, (struct sockaddr *)&storage_server_addr, sizeof(storage_server_addr)) < 0)
                 {
                     fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
                     continue;
