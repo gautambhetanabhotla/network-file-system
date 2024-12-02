@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 
-// FORMAT: YYYY-MM-DDTHH:MM:SS
+// Format: YYYY-MM-DDTHH:MM:SS
 #define UNIX_START_TIME "1970-01-01T00:00:00"
 
 extern struct file** file_entries;
@@ -22,6 +22,16 @@ extern int nm_sockfd;
 char* requeststrings[] = {"read", "write", "stream", "info", "list", "create", "copy", "delete", "sync", "hello", "created"};
 char* exitstatusstrings[] = {"success", "acknowledge", "file doesn't exist", "incomplete write", "file already exists", "nm chose the wrong ss", "an error from SS's side", "connection refused"};
 
+/**
+ * Sends a response with the given exit status, request ID, and content length
+ * to the specified client and/or naming server file descriptors.
+ *
+ * @param nmfd File descriptor for the naming server. If -1, no response is sent to the naming server.
+ * @param clfd File descriptor for the client. If -1, no response is sent to the client.
+ * @param status The exit status code of the response.
+ * @param requestID The unique identifier for the request being responded to.
+ * @param contentLength The length of the content being responded with.
+ */
 void respond(int nmfd, int clfd, enum exit_status status, int requestID, long contentLength) {
     char header[11] = {'\0'}; header[0] = '0' + status;
     sprintf(header + 1, "%d", requestID);
@@ -151,8 +161,88 @@ void ss_read(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     sem_post(&f->lock);
 }
 
+struct arg1 {
+    int port;
+    char* ip;
+    char* vpath;
+    struct file* f;
+};
+
+void* send_file(void* arg) {
+    int port = ((struct arg1 *)arg)->port;
+    char* ip = strdup(((struct arg1 *)arg)->ip);
+    char* vpath = strdup(((struct arg1 *)arg)->vpath);
+    struct file* f = ((struct arg1 *)arg)->f;
+
+    sem_wait(&f->serviceQueue);
+    sem_wait(&f->lock);
+    f->readers++;
+    if(f->readers == 1) sem_wait(&f->writelock);
+    sem_post(&f->lock);
+    sem_post(&f->serviceQueue);
+
+    if(strcmp(ip, "127.0.0.1") != 0) {
+        int destfd = socket(AF_INET, SOCK_STREAM, 0);
+        struct sockaddr_in addr;
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(port);
+        addr.sin_addr.s_addr = inet_addr(ip);
+        if(connect(destfd, (struct sockaddr*) &addr, sizeof(addr)) < 0) {
+            perror("Connect");
+        }
+        char buf[8193]; int n = 0;
+        sem_wait(&f->lock);
+        f->readers++;
+        if(f->readers == 1) sem_wait(&f->writelock);
+        sem_post(&f->lock);
+        sem_post(&f->serviceQueue);
+
+        FILE* F = fopen(f->rpath, "r");
+        if(!F) {
+            perror("file opening");
+        }
+        long filesize;
+        fseek(F, 0, SEEK_END);
+        filesize = ftell(F);
+        rewind(F);
+
+        // char buf[123];
+        sprintf(buf, "127.0.0.1\n0\n127.0.0.1\n0\n");
+        request(-1, destfd, WRITE, filesize + strlen(buf));
+        send(destfd, buf, strlen(buf), 0);
+
+        while(!feof(F)) {
+            n = fread(buf, 1, 8192, F);
+            if(n > 0) send(destfd, buf, n, 0);
+        }
+        fclose(F);
+
+        sem_wait(&f->lock);
+        f->readers--;
+        if(f->readers == 0) sem_post(&f->writelock);
+        sem_post(&f->lock);
+        close(destfd);
+    }
+
+    sem_wait(&f->lock);
+    f->readers--;
+    if(f->readers == 0) sem_post(&f->writelock);
+    sem_post(&f->lock);
+}
+
 void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, int rcl) {
+    char* tbf_old = tbf;
     contentLength -= (rcl + strlen(vpath) + 1);
+
+    // Obtain IPs and ports of other Storage servers
+    char* ip1, ip2[16], port1[6], port2[6];
+    ip1 = __strtok_r(tbf, "\n", &port1);
+    __strtok_r(port1, "\n", &ip2);
+    __strtok_r(ip2, "\n", &port2);
+    __strtok_r(port2, "\n", &tbf);
+    contentLength -= (tbf - tbf_old);
+    int p1 = atoi(port1), p2 = atoi(port2);
+
     struct file* f = get_file(vpath);
     if(!f) {
         respond(nm_sockfd, fd, E_WRONG_SS, requestID, 0);
@@ -162,6 +252,8 @@ void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, 
         respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0);
         return;
     }
+
+    // Open and write to the file
     FILE* F = fopen(f->rpath, "w");
     char buf[8193]; int n = 0;
     sem_wait(&f->serviceQueue);
@@ -179,6 +271,10 @@ void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, 
     sem_post(&f->writelock);
     if(n < contentLength) respond(nm_sockfd, fd, E_INCOMPLETE_WRITE, requestID, 0);
     else respond(nm_sockfd, fd, SUCCESS, requestID, 0);
+
+    // Copy the file to other Storage servers
+    pthread_t t1, t2;
+    pthread_create(&t1, NULL, send_file, (void*) ip1);
 }
 
 struct file* ss_create(int fd, char* vpath, char* mtime, int requestID, int contentLength, char* tbf, int rcl) {
