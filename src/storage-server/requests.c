@@ -87,6 +87,7 @@ void* handle_client(void* arg) {
     recv_full(client_sockfd, CL, sizeof(CL) - 1);
     int contentLength = atoi(CL);
     int CLD = contentLength < 4097 ? contentLength : 4097;
+    if(reqdata[0] - '0' == WRITE) respond(-1, client_sockfd, ACK, atoi(reqdata + 1), 0);
     recv_full(client_sockfd, vpath, CLD);
     char* fp = vpath;
     while(*fp != '\n') fp++;
@@ -170,8 +171,8 @@ struct arg1 {
 
 void* send_file(void* arg) {
     int port = ((struct arg1 *)arg)->port;
-    char* ip = strdup(((struct arg1 *)arg)->ip);
-    char* vpath = strdup(((struct arg1 *)arg)->vpath);
+    char* ip = ((struct arg1 *)arg)->ip;
+    char* vpath = ((struct arg1 *)arg)->vpath;
     struct file* f = ((struct arg1 *)arg)->f;
 
     sem_wait(&f->serviceQueue);
@@ -181,7 +182,7 @@ void* send_file(void* arg) {
     sem_post(&f->lock);
     sem_post(&f->serviceQueue);
 
-    if(strcmp(ip, "127.0.0.1") != 0) {
+    if(strcmp(ip, "127.0.0.1") != 0 || port != -1) {
         int destfd = socket(AF_INET, SOCK_STREAM, 0);
         struct sockaddr_in addr;
         addr.sin_family = AF_INET;
@@ -191,11 +192,6 @@ void* send_file(void* arg) {
             perror("Connect");
         }
         char buf[8193]; int n = 0;
-        sem_wait(&f->lock);
-        f->readers++;
-        if(f->readers == 1) sem_wait(&f->writelock);
-        sem_post(&f->lock);
-        sem_post(&f->serviceQueue);
 
         FILE* F = fopen(f->rpath, "r");
         if(!F) {
@@ -207,7 +203,7 @@ void* send_file(void* arg) {
         rewind(F);
 
         // char buf[123];
-        sprintf(buf, "127.0.0.1\n0\n127.0.0.1\n0\n");
+        sprintf(buf, "%s\n127.0.0.1\n-1\n127.0.0.1\n-1\n", vpath);
         request(-1, destfd, WRITE, filesize + strlen(buf));
         send(destfd, buf, strlen(buf), 0);
 
@@ -217,10 +213,6 @@ void* send_file(void* arg) {
         }
         fclose(F);
 
-        sem_wait(&f->lock);
-        f->readers--;
-        if(f->readers == 0) sem_post(&f->writelock);
-        sem_post(&f->lock);
         close(destfd);
     }
 
@@ -232,15 +224,16 @@ void* send_file(void* arg) {
 
 void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, int rcl) {
     char* tbf_old = tbf;
-    contentLength -= (rcl + strlen(vpath) + 1);
-
+    contentLength = rcl;
+    // contentLength -= (strlen(vpath) + 1);
+    
     // Obtain IPs and ports of other Storage servers
-    char* ip1, ip2[16], port1[6], port2[6];
-    ip1 = __strtok_r(tbf, "\n", &port1);
-    __strtok_r(port1, "\n", &ip2);
-    __strtok_r(ip2, "\n", &port2);
-    __strtok_r(port2, "\n", &tbf);
-    contentLength -= (tbf - tbf_old);
+    char *ip1, *ip2, *port1, *port2, *saveptr;
+    ip1 = __strtok_r(tbf, "\n", &saveptr);
+    port1 = __strtok_r(NULL, "\n", &saveptr);
+    ip2 = __strtok_r(NULL, "\n", &saveptr);
+    port2 = __strtok_r(NULL, "\n", &saveptr);
+    contentLength -= (saveptr - tbf_old);
     int p1 = atoi(port1), p2 = atoi(port2);
 
     struct file* f = get_file(vpath);
@@ -260,7 +253,7 @@ void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, 
     sem_wait(&f->writelock);
     sem_post(&f->serviceQueue);
     respond(-1, fd, ACK, requestID, 0);
-    fwrite(tbf, 1, rcl, F);
+    n += fwrite(tbf + rcl - contentLength, 1, rcl, F);
     while(n < contentLength) {
         int k = recv(fd, buf, 8192, 0);
         if(k == 0) break;
@@ -274,7 +267,18 @@ void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, 
 
     // Copy the file to other Storage servers
     pthread_t t1, t2;
-    pthread_create(&t1, NULL, send_file, (void*) ip1);
+    struct arg1* arg = (struct arg1*)malloc(sizeof(struct arg1));
+    arg->port = p1;
+    arg->ip = strdup(ip1);
+    arg->vpath = strdup(vpath);
+    arg->f = f;
+    struct arg1* arg2 = (struct arg1*)malloc(sizeof(struct arg1));
+    arg2->port = p2;
+    arg2->ip = strdup(ip2);
+    arg2->vpath = strdup(vpath);
+    arg2->f = f;
+    pthread_create(&t1, NULL, send_file, arg);
+    pthread_create(&t2, NULL, send_file, arg2);
 }
 
 struct file* ss_create(int fd, char* vpath, char* mtime, int requestID, int contentLength, char* tbf, int rcl) {
