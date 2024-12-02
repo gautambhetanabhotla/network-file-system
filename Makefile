@@ -44,5 +44,5 @@ reset:
 
 req:
 	gcc tests/send_req_to_ss.c
-	./a.out 127.0.0.1 3000
+	./a.out 127.0.0.1 3001
 	rm -f a.out

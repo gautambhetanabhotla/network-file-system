@@ -27,7 +27,7 @@ void ss_delete(int fd, char* vpath, int requestID, char* tbf, int rcl);
 void ss_stream(int fd, char* vpath, int requestID, char* tbf, int rcl);
 void ss_copy(int fd, char* srcpath, int requestID, char* tbf, int rcl);
 void ss_info(int fd, char* vpath, int requestID, char* tbf, int rcl);
-void ns_synchronize(int fd, char* vpath, int requestID);
+void ss_sync(int fd, char* vpath, int requestID, char* tbf, int rcl);
 
 void request(int clfd, int nmfd, enum request_type type, long contentLength);
 void respond(int clfd, int nmfd, enum exit_status status, int requestID, long contentLength);

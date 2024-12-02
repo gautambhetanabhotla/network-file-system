@@ -289,6 +289,7 @@ void handle_write_request(int client_socket, int client_req_id, char* content, l
     fprintf(stderr, "Handled write request %d %s %ld\n", client_req_id, content, content_length);
 }
 
+
 int delete_file(const char *path, FileEntry *entry, int client_req_id)
 {
     int storage_req_id = client_req_id;

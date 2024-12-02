@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 
 // FORMAT: YYYY-MM-DDTHH:MM:SS
 #define UNIX_START_TIME "1970-01-01T00:00:00"
@@ -20,10 +21,6 @@ extern int nm_sockfd;
 
 char* requeststrings[] = {"read", "write", "stream", "info", "list", "create", "copy", "delete", "sync", "hello", "created"};
 char* exitstatusstrings[] = {"success", "acknowledge", "file doesn't exist", "incomplete write", "file already exists", "nm chose the wrong ss", "an error from SS's side", "connection refused"};
-
-void ns_synchronize(int fd, char* vpath, int requestID) {
-    
-}
 
 void respond(int nmfd, int clfd, enum exit_status status, int requestID, long contentLength) {
     char header[11] = {'\0'}; header[0] = '0' + status;
@@ -109,6 +106,9 @@ void* handle_client(void* arg) {
             break;
         case INFO:
             ss_info(client_sockfd, vpath, requestID, fp, remainingContentLength);
+            break;
+        case SYNC:
+            ss_sync(client_sockfd, vpath, requestID, fp, remainingContentLength);
             break;
         default:
             send(client_sockfd, "tf u sending brother??????????\n", strlen("tf u sending brother??????????\n"), 0);
@@ -329,11 +329,71 @@ void ss_info(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     }
     rewind(F);
 
+    struct stat statbuf;
+    if(lstat(f->rpath, &statbuf) == -1) {
+        perror("lstat");
+    }
+    char permsbuf[11];
+    sprintf(permsbuf, "%c%c%c%c%c%c%c%c%c%c",
+            (S_ISDIR(statbuf.st_mode)) ? 'd' : '.',
+            (statbuf.st_mode & S_IRUSR) ? 'r' : '-',
+            (statbuf.st_mode & S_IWUSR) ? 'w' : '-',
+            (statbuf.st_mode & S_IXUSR) ? 'x' : '-',
+            (statbuf.st_mode & S_IRGRP) ? 'r' : '-',
+            (statbuf.st_mode & S_IWGRP) ? 'w' : '-',
+            (statbuf.st_mode & S_IXGRP) ? 'x' : '-',
+            (statbuf.st_mode & S_IROTH) ? 'r' : '-',
+            (statbuf.st_mode & S_IWOTH) ? 'w' : '-',
+            (statbuf.st_mode & S_IXOTH) ? 'x' : '-');
+    permsbuf[10] = '\0';
+
     // Send the file info to the client
     char buffer[1024];
-    sprintf(buffer, "File size: %ld bytes\nNumber of lines: %d\nLast modified: %s\n", file_size, line_count, f->mtime);
+    sprintf(buffer, "File size: %ld bytes\nNumber of lines: %d\nLast modified: %s\nPermissions: %s\n", file_size, line_count, f->mtime, permsbuf);
     respond(nm_sockfd, fd, SUCCESS, requestID, (long)strlen(buffer));
     send(fd, buffer, strlen(buffer), 0);
 
     fclose(F);
+}
+
+void ss_sync(int fd, char* vpath, int requestID, char* tbf, int rcl) {
+    struct file* f = get_file(vpath);
+    if(!f) {
+        respond(nm_sockfd, fd, E_FILE_DOESNT_EXIST, requestID, 0);
+        return;
+    }
+    FILE* F = fopen(f->rpath, "r");
+    if(!F) {
+        respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0);
+        return;
+    }
+
+    long filesize;
+    fseek(F, 0, SEEK_END);
+    filesize = ftell(F);
+    rewind(F);
+
+    char* portptr;
+    char* ip = __strtok_r(tbf, "\n", &portptr);
+    __strtok_r(NULL, "\n", &tbf);
+    int port = atoi(portptr);
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = inet_addr(ip);
+    int destfd = socket(AF_INET, SOCK_STREAM, 0);
+    if(connect(destfd, (struct sockaddr*) &addr, sizeof(addr)) < 0) {
+        respond(nm_sockfd, fd, E_CONN_REFUSED, requestID, 0);
+    }
+    request(-1, destfd, WRITE, filesize + strlen(vpath) + 1);
+    char buf[8193]; int n = 0;
+    char pathbuf[MAXPATHLENGTH];
+    sprintf(pathbuf, "%s\n", vpath);
+    send(destfd, pathbuf, strlen(pathbuf), 0);
+    while(!feof(F)) {
+        n = fread(buf, 1, 8192, F);
+        if(n > 0) send(destfd, buf, n, 0);
+    }
+    fclose(F);
+    respond(nm_sockfd, fd, SUCCESS, requestID, 0);
 }

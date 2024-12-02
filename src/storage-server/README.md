@@ -1,6 +1,4 @@
-## Sending requests to the storage server
-- Header: 4126 bytes
-- Request type: 10 bytes
-- Virtual path: 4096 bytes
-- Content length: 20 bytes
-- *Content*
+## Header format
+Byte 1: Request/response type
+Bytes 2-10: Request ID
+Bytes 11-30: Content length
