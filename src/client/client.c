@@ -931,21 +931,33 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
     ss_portnum = atoi(port_str);     // Convert port string to integer
 
     char * ss_ip2;
-    int ss_portnum2;
+    int ss_portnum2 = 0;
 
     char * ss_ip3;
-    int ss_portnum3;
+    int ss_portnum3 = 0;
+    
+    if(saveptr){
+        ss_ip2 = NULL;
+        ss_ip3 = NULL;
+        ss_ip2 = strtok_r(response, "\n", &saveptr);
+        port_str = strtok_r(NULL, "\n", &saveptr);
 
-    ss_ip2 = strtok_r(response, "\n", &saveptr);
-    port_str = strtok_r(NULL, "\n", &saveptr);
 
-    ss_portnum2 = atoi(port_str);
 
-    ss_ip3 = strtok_r(response, "\n", &saveptr);
-    port_str = strtok_r(NULL, "\n", &saveptr);
+        if (port_str != NULL){
+            ss_portnum2 = atoi(port_str);
+        }
 
-    ss_portnum3 = atoi(port_str);
+        if (saveptr){
+            ss_ip3 = strtok_r(response, "\n", &saveptr);
+            port_str = strtok_r(NULL, "\n", &saveptr);
 
+            if (port_str != NULL){
+                ss_portnum3 = atoi(port_str);
+            }
+        }
+
+    }
     // Check if is less than 0
     if (ss_portnum < 0) {
         printf("Sorry, the file was not found.\n");
@@ -997,7 +1009,15 @@ int write_it(const char * sourcefilepath, const char * destfilepath, bool synchr
     ssize_t ss_bytes_received = 0;
     long long int data_length;
     char * destfilepath2 = (char *) malloc(sizeof(char) * (strlen(destfilepath) + 100));
-    snprintf("%s\n%d\n%s\n%d\n", ss_ip2, ss_portnum2, ss_ip3, ss_portnum3);
+    if(ss_ip2 != NULL && ss_ip3 != NULL){
+        snprintf(destfilepath2,"%s\n%d\n%s\n%d\n", ss_ip2, ss_portnum2, ss_ip3, ss_portnum3);        
+    }
+    else if(ss_ip2 != NULL){
+        snprintf(destfilepath2, "%s\n%d\n-1\n-1\n", ss_ip2, ss_portnum2);
+    }
+    else{
+        snprintf(destfilepath2, "-1\n-1\n-1\n-1\n", ss_ip2, ss_portnum2);
+    }
 
     strcpy(&destfilepath2[strlen(destfilepath2)], destfilepath);
     destfilepath2[strlen(destfilepath2)] = '\n';

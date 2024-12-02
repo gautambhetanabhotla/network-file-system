@@ -286,7 +286,7 @@ void handle_write_request(int client_socket, int client_req_id, char* content, l
         for (int i = 0; i < server_count; i++)
         {
             char server_info[256];
-            snprintf(server_info, sizeof(server_info), "%s %d\n", ss_info[i].ip_address, ss_info[i].client_port);
+            snprintf(server_info, sizeof(server_info), "%s\n%d\n", ss_info[i].ip_address, ss_info[i].client_port);
             strncat(response, server_info, sizeof(response) - strlen(response) - 1);
         }
 
