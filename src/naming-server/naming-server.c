@@ -458,6 +458,7 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             fprintf(stderr, "timestamp: %s\n", timestamp);
             int chosen_servers[3];
             int num_chosen = 0;
+            choose_least_full_servers(chosen_servers, &num_chosen);
             FileEntry *file = insert_path(file_path, chosen_servers, num_chosen, root);
             file->is_folder = 0;
             set_file_entry_timestamp(file, timestamp);
@@ -644,6 +645,7 @@ void handle_delete_request(int client_socket, int client_req_id, char *content, 
     FileEntry *entry = search_path(path, root);
     pthread_mutex_unlock(&trie_mutex);
 
+    int is_folder = entry->is_folder;
     if (entry == NULL)
     {
         send_error_response(client_socket, client_req_id, "Error: Path does not exist\n");
@@ -663,7 +665,7 @@ void handle_delete_request(int client_socket, int client_req_id, char *content, 
     remove_path(path, root);
 
     // Check if it's a file or a directory
-    if (entry->is_folder == 0)
+    if (is_folder == 0)
     {
         // send delete header request to all storage servers that have the file
         for (int i = 0; i < 3; i++)
@@ -724,6 +726,30 @@ void handle_delete_request(int client_socket, int client_req_id, char *content, 
                 fprintf(stderr, "Error response from storage server %d\n", ss_id);
             }
         }
+    }else{
+        char header[31] = {0};
+            char req_id_str[10];
+            char content_length_str[21];
+
+            snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
+
+            // combine filepath and folderpath to get absolute path
+            char abs_path[4096];
+            snprintf(abs_path, sizeof(abs_path), "%s%s\n", folderpath, filename);
+            snprintf(content_length_str, sizeof(content_length_str), "%020ld", strlen(abs_path));
+
+            header[0] = '8';
+            strncpy(&header[1], req_id_str, 9);
+            strncpy(&header[10], content_length_str, 20);
+            header[30] = '\0';
+            fprintf(stderr, "header: %s\n", header);
+
+            // Send header and path
+            if (write_n_bytes(client_socket, header, 30) != 30 ||
+                write_n_bytes(client_socket, abs_path, strlen(abs_path) + 1) != (ssize_t)(strlen(abs_path) + 1))
+            {
+                fprintf(stderr, "error to client\n");
+            }
     }
 
     // if (result < 0)

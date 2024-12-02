@@ -277,7 +277,7 @@ int info(const char * filepath){
     ns_bytes_received = recv(ns_socket, response, 30, 0);
     
     
-    if (ns_bytes_received != 30) {
+    if (ns_bytes_received < 30) {
         perror("Failed to receive response from naming server.\n");
         return -1;
     }
