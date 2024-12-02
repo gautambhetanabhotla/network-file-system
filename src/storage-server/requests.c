@@ -184,7 +184,7 @@ void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, 
 struct file* ss_create(int fd, char* vpath, char* mtime, int requestID, int contentLength, char* tbf, int rcl) {
     contentLength -= (strlen(vpath) + 1);
     tbf[contentLength] = '\0';
-    mtime = tbf;
+    mtime = tbf + 3;
     struct file* g = NULL;
     if((g = get_file(vpath))) {
         respond(nm_sockfd, -1, E_FILE_ALREADY_EXISTS, requestID, 0);
@@ -385,6 +385,12 @@ void ss_sync(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     if(connect(destfd, (struct sockaddr*) &addr, sizeof(addr)) < 0) {
         respond(nm_sockfd, fd, E_CONN_REFUSED, requestID, 0);
     }
+    sem_wait(&f->serviceQueue);
+    sem_wait(&f->lock);
+    f->readers++;
+    if(f->readers == 1) sem_wait(&f->writelock);
+    sem_post(&f->lock);
+    sem_post(&f->serviceQueue);
     request(-1, destfd, WRITE, filesize + strlen(vpath) + 1);
     char buf[8193]; int n = 0;
     char pathbuf[MAXPATHLENGTH];
@@ -394,6 +400,10 @@ void ss_sync(int fd, char* vpath, int requestID, char* tbf, int rcl) {
         n = fread(buf, 1, 8192, F);
         if(n > 0) send(destfd, buf, n, 0);
     }
+    sem_wait(&f->lock);
+    f->readers--;
+    if(f->readers == 0) sem_post(&f->writelock);
+    sem_post(&f->lock);
     fclose(F);
     respond(nm_sockfd, fd, SUCCESS, requestID, 0);
 }
