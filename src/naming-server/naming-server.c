@@ -464,6 +464,7 @@ void handle_create_request(int client_socket, int client_req_id, char *content, 
             time_t t = time(NULL);
             struct tm tm = *localtime(&t);
             char timestamp[20];
+            memset(timestamp, 0, sizeof(timestamp));
             strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%S", &tm);
             fprintf(stderr, "timestamp: %s\n", timestamp);
             int chosen_servers[3];
