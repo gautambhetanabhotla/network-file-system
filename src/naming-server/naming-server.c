@@ -185,6 +185,16 @@ void handle_rsi_request(int client_socket, int client_req_id, char *content, lon
     // content[content_length-1] = '\0';
 
     FileEntry *file = search_path(content, root);
+    // check if request type is 3 and then if yes, check if the file contains .pcm or .mpe
+    if (request_type == '3')
+    {
+        if (strstr(content, ".pcm") == NULL && strstr(content, ".mp3") == NULL)
+        {
+            fprintf(stderr, "file does not contain .pcm or .mp3\n");
+            send_error_response(client_socket, client_req_id, "Error: File does not contain .pcm or .mp3\n");
+            return;
+        }
+    }
     if (file == NULL)
     {
         fprintf(stderr, "path not found\n");
@@ -1066,21 +1076,23 @@ void collect_paths(TrieNode *node, char *current_path, int depth, char ***output
     }
 
     // Recursively traverse the children
-    for (int i = 0; i < 256; i++)
-    {
-        if (node->children[i])
+    if(node->deleted == 0){
+        for (int i = 0; i < 256; i++)
         {
-            if (depth + 1 >= MAX_PATH_LENGTH)
+            if (node->children[i])
             {
-                fprintf(stderr, "Path too long\n");
-                return;
+                if (depth + 1 >= MAX_PATH_LENGTH)
+                {
+                    fprintf(stderr, "Path too long\n");
+                    return;
+                }
+
+                // Append the character to the current path
+                current_path[depth] = (char)i;
+
+                // Recurse into the child node
+                collect_paths(node->children[i], current_path, depth + 1, output, output_length);
             }
-
-            // Append the character to the current path
-            current_path[depth] = (char)i;
-
-            // Recurse into the child node
-            collect_paths(node->children[i], current_path, depth + 1, output, output_length);
         }
     }
 }

@@ -102,6 +102,7 @@ typedef struct CacheNode {
 typedef struct TrieNode {
     struct TrieNode *children[256];
     FileEntry *file_entry;
+    int deleted;
 } TrieNode;
 
 struct lru_cache_node {
