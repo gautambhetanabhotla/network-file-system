@@ -9,12 +9,37 @@ extern int nm_sockfd;
 #define MAXPATHLENGTH 4096
 #define MAXFILENAMELENGTH 256
 
+/**
+ * @enum request_type
+ * @brief Represents the types of requests supported by the storage server.
+ */
 enum request_type {
-    READ = 1, WRITE, STREAM, INFO, LIST, CREATE, COPY, DELETE, SYNC, HELLO, SYNC_BACK
+    READ = 1, // Request to read data from the server.
+    WRITE,    // Request to write data to the server.
+    STREAM,   // Request to stream data from/to the server.
+    INFO,     // Request to retrieve information about a file or resource.
+    LIST,     // Request to list files or directories.
+    CREATE,   // Request to create a new file or directory.
+    COPY,     // Request to copy a file or directory.
+    DELETE,   // Request to delete a file or directory.
+    SYNC,     // Request to synchronize data with the server.
+    HELLO,    // Request to initiate a handshake or greeting with the server.
+    SYNC_BACK // Request to synchronize data back from the server.
 };
 
+/**
+ * @enum ExitStatus
+ * @brief Represents the possible exit statuses for requests.
+ */
 enum exit_status {
-    SUCCESS, ACK, E_FILE_DOESNT_EXIST, E_INCOMPLETE_WRITE, E_FILE_ALREADY_EXISTS, E_WRONG_SS, E_FAULTY_SS, E_CONN_REFUSED
+    SUCCESS,                // Request completed successfully.
+    ACK,                    // Request acknowledged. The server may or may not work on it immediately.
+    E_FILE_DOESNT_EXIST,    // File doesn't exist.
+    E_INCOMPLETE_WRITE,     // Incomplete write operation.
+    E_FILE_ALREADY_EXISTS,  // File already exists.
+    E_WRONG_SS,             // The requested file path doesn't exist on this storage server.
+    E_FAULTY_SS,            // Something went wrong on the storage server's side.
+    E_CONN_REFUSED          // Connection refused.
 };
 
 int recv_full(int fd, char* buf, int contentLength);

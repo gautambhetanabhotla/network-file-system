@@ -30,7 +30,7 @@ char* exitstatusstrings[] = {"success", "acknowledge", "file doesn't exist", "in
  * @param clfd File descriptor for the client. If -1, no response is sent to the client.
  * @param status The exit status code of the response.
  * @param requestID The unique identifier for the request being responded to.
- * @param contentLength The length of the content being responded with.
+ * @param contentLength The length of the content of the response.
  */
 void respond(int nmfd, int clfd, enum exit_status status, int requestID, long contentLength) {
     char header[11] = {'\0'}; header[0] = '0' + status;
@@ -48,6 +48,14 @@ void respond(int nmfd, int clfd, enum exit_status status, int requestID, long co
     }
 }
 
+/**
+ * Sends a request header to the naming server and/or client with the specified type and content length.
+ *
+ * @param nmfd File descriptor for the naming server. If -1, no request is sent to the naming server.
+ * @param clfd File descriptor for the client. If -1, no request is sent to the client.
+ * @param type The type of request being sent.
+ * @param contentLength The length of the content of the request body.
+ */
 void request(int nmfd, int clfd, enum request_type type, long contentLength) {
     char header[11] = {'\0'}; header[0] = '0' + type;
     snprintf(header + 1, 9, "%d", 0);
@@ -78,6 +86,12 @@ int recv_full(int fd, char* buf, int contentLength) {
     else return 0; // Success
 }
 
+/**
+ * Handles a client connection by processing the request and responding accordingly.
+ *
+ * @param arg Pointer to the client socket file descriptor.
+ * @return NULL
+ */
 void* handle_client(void* arg) {
     fprintf(stderr, "Client arrived!\n");
     int client_sockfd = *(int*)arg;

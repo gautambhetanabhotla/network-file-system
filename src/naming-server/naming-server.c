@@ -1347,7 +1347,7 @@ void *handle_connection(void *arg)
     }
 
     // Debug: Print the request_type
-    fprintf(stderr, "Received REQUEST_TYPE: %c (ASCII: %d)\n", request_type);
+    fprintf(stderr, "Received REQUEST_TYPE: %c (ASCII: %d)\n", request_type, request_type - '0');
 
     // Handle REQUEST_TYPE
     if (request_type == ':') // Storage server connection

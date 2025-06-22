@@ -16,13 +16,17 @@
 #include <signal.h>
 
 extern sem_t n_file_sem;
+int nm_sockfd;
 
 void sigpipe_handler(int sig) {
     // fprintf(stderr, "SIGPIPE received\n");
 }
 
-int nm_sockfd;
-
+/**
+ * Creates a storage directory with 0777 permissions to store
+ * files if it doesn't already exist.
+ * If the directory cannot be created, the program exits with status 1
+ */
 void createStorageDirectory() {
     DIR* storage_dir = opendir("./storage");
     if(storage_dir == NULL) {
@@ -36,8 +40,22 @@ void createStorageDirectory() {
     closedir(storage_dir);
 }
 
+/**
+ * Connects to the naming server using the provided IP address and port.
+ * If the connection fails, the program exits with status 1.
+ *
+ * @param argc The number of command line arguments.
+ * @param argv The command line arguments.
+ * @param argv[1] The IP address of the naming server.
+ * @param argv[2] The port number of the naming server.
+ * @return The socket file descriptor for the naming server connection.
+ */
 int connect_to_naming_server(int argc, char* argv[]) {
-    int nm_sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (argc < 3) {
+        fprintf(stderr, "Usage: %s <IP Address> <Port>\n", argv[0]);
+        exit(1);
+    }
+    nm_sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if(nm_sockfd < 0) {
         perror("Socket couldn't be created");
         exit(1);
@@ -58,6 +76,11 @@ int connect_to_naming_server(int argc, char* argv[]) {
     return nm_sockfd;
 }
 
+/**
+ * Sends the paths of files stored on this storage server from the paths.txt file to the naming server.
+ * The format of each line in paths.txt is: <virtual_path> <real_path> <modification_time>
+ * Example: /virtual/path /real/path 2023-10-01T12:00:00
+ */
 void send_paths(int nm_sockfd) {
     fprintf(stderr, "Sending paths to naming server...\n");
     FILE* pathsfile = fopen("./paths.txt", "r");
@@ -115,6 +138,7 @@ void send_paths(int nm_sockfd) {
 }
 
 void* handle_ns(void* arg) {
+    nm_sockfd = *(int*)arg;
     while(1) handle_client(&nm_sockfd);
 }
 
