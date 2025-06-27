@@ -1,4 +1,5 @@
-#include "requests.h"
+#include "../lib/request.h"
+#include "storageserver.h"
 #include "files.h"
 
 #include <stdio.h>
@@ -84,9 +85,11 @@ int connect_to_naming_server(int argc, char* argv[]) {
 void send_paths(int nm_sockfd) {
     fprintf(stderr, "Sending paths to naming server...\n");
     FILE* pathsfile = fopen("./paths.txt", "r");
-    if(pathsfile == NULL) pathsfile = fopen("./paths.txt", "w");
-    fclose(pathsfile);
-    pathsfile = fopen("./paths.txt", "r");
+    if(pathsfile == NULL) {
+        pathsfile = fopen("./paths.txt", "w");
+        fclose(pathsfile);
+        pathsfile = fopen("./paths.txt", "r");
+    }
     while(!feof(pathsfile)) {
         int flag = 0;
         char vpath[MAXPATHLENGTH + 1], rpath[MAXPATHLENGTH + 1];
@@ -146,6 +149,11 @@ int main(int argc, char* argv[]) {
 
     // signal(SIGPIPE, sigpipe_handler);
 
+    if (argc < 3) {
+        fprintf(stderr, "Usage: %s <IP Address> <Port>\n", argv[0]);
+        exit(1);
+    }
+
     createStorageDirectory();
     sem_init(&n_file_sem, 0, 1);
 
@@ -178,7 +186,7 @@ int main(int argc, char* argv[]) {
     // Initialise stuff with naming server
     nm_sockfd = connect_to_naming_server(argc, argv);
     // send(nm_sockfd, "STORAGESERVER", strlen("STORAGESERVER"), 0);
-    long byte_count = 0;
+    long long byte_count = 0;
     FILE* pathsfile = fopen("./paths.txt", "r");
     if(pathsfile) {
         fseek(pathsfile, 0, SEEK_END);
@@ -187,11 +195,12 @@ int main(int argc, char* argv[]) {
         fclose(pathsfile);
     }
     // fprintf(stderr, "SENDING CONTENT LENGTH %ld\n", byte_count);
-    request(nm_sockfd, -1, HELLO, (long)5 + byte_count);
+    uint16_t ports[2] = {PORT, 0};
+    request(nm_sockfd, -1, HELLO_FROM_SS, byte_count, ports, NULL, NULL);
     // Send the port you're using to listen for clients
-    char port_str[6] = {'\0'};
-    sprintf(port_str, "%d", PORT);
-    send(nm_sockfd, port_str, sizeof(port_str) - 1, 0);
+    // char port_str[6] = {'\0'};
+    // sprintf(port_str, "%d", PORT);
+    // send(nm_sockfd, port_str, sizeof(port_str) - 1, 0);
     // Send the list of accessible paths
     send_paths(nm_sockfd);
 
@@ -202,7 +211,7 @@ int main(int argc, char* argv[]) {
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
         pthread_t client_thread;
-        int client_fd = accept(ss_sockfd, (struct sockaddr *)&client_addr, &client_len);
+        int client_fd = accept(ss_sockfd, &client_addr, &client_len);
         pthread_create(&client_thread, NULL, handle_client, (void *)&client_fd);
         // pthread_detach(client_thread);
     }
