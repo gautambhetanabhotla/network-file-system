@@ -42,42 +42,6 @@ void createStorageDirectory() {
 }
 
 /**
- * Connects to the naming server using the provided IP address and port.
- * If the connection fails, the program exits with status 1.
- *
- * @param argc The number of command line arguments.
- * @param argv The command line arguments.
- * @param argv[1] The IP address of the naming server.
- * @param argv[2] The port number of the naming server.
- * @return The socket file descriptor for the naming server connection.
- */
-int connect_to_naming_server(int argc, char* argv[]) {
-    if (argc < 3) {
-        fprintf(stderr, "Usage: %s <IP Address> <Port>\n", argv[0]);
-        exit(1);
-    }
-    nm_sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if(nm_sockfd < 0) {
-        perror("Socket couldn't be created");
-        exit(1);
-    }
-    int nm_server_port = atoi(argv[2]);
-    char* nm_server_ip = argv[1];
-    struct sockaddr_in nm_server_addr;
-    nm_server_addr.sin_family = AF_INET;
-    nm_server_addr.sin_port = htons(nm_server_port);
-    if(inet_pton(AF_INET, nm_server_ip, &nm_server_addr.sin_addr) <= 0) {
-        perror("Invalid/unsupported address");
-        exit(1);
-    }
-    if(connect(nm_sockfd, (struct sockaddr*)&nm_server_addr, sizeof(nm_server_addr)) < 0) {
-        perror("Connection to naming server failed");
-        exit(1);
-    }
-    return nm_sockfd;
-}
-
-/**
  * Sends the paths of files stored on this storage server from the paths.txt file to the naming server.
  * The format of each line in paths.txt is: <virtual_path> <real_path> <modification_time>
  * Example: /virtual/path /real/path 2023-10-01T12:00:00
@@ -149,11 +113,6 @@ int main(int argc, char* argv[]) {
 
     // signal(SIGPIPE, sigpipe_handler);
 
-    if (argc < 3) {
-        fprintf(stderr, "Usage: %s <IP Address> <Port>\n", argv[0]);
-        exit(1);
-    }
-
     createStorageDirectory();
     sem_init(&n_file_sem, 0, 1);
 
@@ -184,7 +143,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Initialise stuff with naming server
-    nm_sockfd = connect_to_naming_server(argc, argv);
+    nm_sockfd = connect_with_ip_port(argv[1], atoi(argv[2]));
     // send(nm_sockfd, "STORAGESERVER", strlen("STORAGESERVER"), 0);
     long long byte_count = 0;
     FILE* pathsfile = fopen("./paths.txt", "r");
@@ -196,12 +155,7 @@ int main(int argc, char* argv[]) {
     }
     // fprintf(stderr, "SENDING CONTENT LENGTH %ld\n", byte_count);
     uint16_t ports[2] = {PORT, 0};
-    request(nm_sockfd, -1, HELLO_FROM_SS, byte_count, ports, NULL, NULL);
-    // Send the port you're using to listen for clients
-    // char port_str[6] = {'\0'};
-    // sprintf(port_str, "%d", PORT);
-    // send(nm_sockfd, port_str, sizeof(port_str) - 1, 0);
-    // Send the list of accessible paths
+    request(nm_sockfd, -1, HELLO_FROM_SS, byte_count, NULL, NULL, ports);
     send_paths(nm_sockfd);
 
     pthread_t nm_thread;
@@ -211,7 +165,7 @@ int main(int argc, char* argv[]) {
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
         pthread_t client_thread;
-        int client_fd = accept(ss_sockfd, &client_addr, &client_len);
+        int client_fd = accept(ss_sockfd, (struct sockaddr*)&client_addr, &client_len);
         pthread_create(&client_thread, NULL, handle_client, (void *)&client_fd);
         // pthread_detach(client_thread);
     }

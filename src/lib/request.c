@@ -1,7 +1,11 @@
 #include "request.h"
+
 #include <stdio.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 uint64_t next_req_id = 0;
 pthread_mutex_t req_id_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -18,7 +22,7 @@ void request_to_string(request_header* req) {
         "", "READ", "WRITE", "STREAM", "INFO", "LIST", "CREATE", "COPY", "DELETE",
         "HELLO_FROM_CLIENT", "HELLO_FROM_SS", "SYNC_BACK"
     };
-    fprintf(stderr, "REQUEST %llu: %s\nContent length: %lu\n%s\n%s", req->id, request_type_strings[req->type],
+    fprintf(stderr, "REQUEST %lu: %s\nContent length: %lu\n%s\n%s", req->id, request_type_strings[req->type],
             req->contentLength, req->paths[0], req->paths[1]);
 }
 
@@ -31,22 +35,17 @@ void request_to_string(request_header* req) {
  * @param status The exit status code of the response.
  * @param requestID The unique identifier for the request being responded to.
  * @param contentLength The length of the content of the response.
+ * @param ip The IP address of the client or server to which the response is sent. If NULL, no IP is set.
+ * @param port The port number of the client or server to which the response is sent.
  */
-void respond(int fd1, int fd2, enum exit_status status, int requestID, long contentLength) {
+void respond(int fd1, int fd2, enum exit_status status, int requestID, long contentLength, char* ip, uint16_t port) {
     char* exitstatusstrings[] = {"success", "acknowledge", "file doesn't exist", "incomplete write", "file already exists", "nm chose the wrong ss", "an error from SS's side", "connection refused"};
-    char header[11] = {'\0'}; header[0] = '0' + status;
-    sprintf(header + 1, "%d", requestID);
-    char CL[21]; CL[20] = '\0';
-    sprintf(CL, "%ld", contentLength);
-    fprintf(stderr, "Responding with %s for request ID %d\n", exitstatusstrings[status], requestID);
-    if(fd1 != -1){
-        send(fd1, header, sizeof(header) - 1, 0);
-        send(fd1, CL, sizeof(CL) - 1, 0);
-    }
-    if(fd2 != -1) {
-        send(fd2, header, sizeof(header) - 1, 0);
-        send(fd2, CL, sizeof(CL) - 1, 0);
-    }
+    struct response_header header = {requestID, contentLength, status};
+    if(ip) strncpy(header.ip, ip, INET_ADDRSTRLEN - 1);
+    header.ip[INET_ADDRSTRLEN - 1] = '\0';
+    header.port = port;
+    if(fd1 != -1) send(fd1, &header, sizeof(header), 0);
+    if(fd2 != -1) send(fd2, &header, sizeof(header), 0);
 }
 
 /**
@@ -62,12 +61,12 @@ void respond(int fd1, int fd2, enum exit_status status, int requestID, long cont
  */
 void request(int fd1, int fd2, enum request_type type, long contentLength, char** paths, char** ips, uint16_t* ports) {
     request_header header = {get_new_request_id(), contentLength, type};
-    strncpy(header.paths[0], paths[0], PATH_MAX - 1);
-    strncpy(header.ip[0], ips[0], INET_ADDRSTRLEN - 1);
+    if(paths && paths[0]) strncpy(header.paths[0], paths[0], PATH_MAX - 1);
+    if(ips && ips[0]) strncpy(header.ip[0], ips[0], INET_ADDRSTRLEN - 1);
     header.ip[0][INET_ADDRSTRLEN - 1] = '\0';
     header.port[0] = ports[0];
-    strncpy(header.paths[1], paths[1], PATH_MAX - 1);
-    strncpy(header.ip[1], ips[1], INET_ADDRSTRLEN - 1);
+    if(paths && paths[1]) strncpy(header.paths[1], paths[1], PATH_MAX - 1);
+    if(ips && ips[1]) strncpy(header.ip[1], ips[1], INET_ADDRSTRLEN - 1);
     header.ip[1][INET_ADDRSTRLEN - 1] = '\0';
     header.port[1] = ports[1];
     header.paths[0][PATH_MAX - 1] = '\0';
@@ -75,4 +74,23 @@ void request(int fd1, int fd2, enum request_type type, long contentLength, char*
     header.paths[1][PATH_MAX - 1] = '\0';
     if(fd1 != -1) send(fd1, &header, sizeof(header), 0);
     if(fd2 != -1) send(fd2, &header, sizeof(header), 0);
+}
+
+int connect_with_ip_port(const char* ip, uint16_t port) {
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = inet_addr(ip);
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        perror("Socket creation failed");
+        return -1;
+    }
+    if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        perror("Connection failed");
+        fprintf(stderr, "Failed to connect to %s:%d\n", ip, port);
+        close(sockfd);
+        return -1;
+    }
+    return sockfd;
 }

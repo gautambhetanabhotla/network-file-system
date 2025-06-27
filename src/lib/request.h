@@ -10,6 +10,8 @@
 #define MAXPATHLENGTH 4096
 #define MAXFILENAMELENGTH 256
 
+int connect_with_ip_port(const char* ip, uint16_t port);
+
 /**
  * @enum request_type
  * @brief Represents the types of requests supported by the storage server.
@@ -69,6 +71,10 @@ typedef struct response_header {
     uint64_t requestID;
     uint64_t contentLength;
     enum exit_status status;
+    char ip[INET_ADDRSTRLEN];
+    uint16_t port;
 } response_header;
+
+void respond(int fd1, int fd2, enum exit_status status, int requestID, long contentLength, char* ip, uint16_t port);
 
 #endif

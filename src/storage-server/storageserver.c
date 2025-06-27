@@ -80,12 +80,12 @@ void* handle_client(void* arg) {
 void ss_read(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     struct file* f = get_file(vpath);
     if(!f) {
-        respond(nm_sockfd, fd, E_WRONG_SS, requestID, 0);
+        respond(nm_sockfd, fd, E_WRONG_SS, requestID, 0, NULL, 0);
         return;
     }
     FILE* F = fopen(f->rpath, "r");
     if(!F) {
-        respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0);
+        respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0, NULL, 0);
         return;
     }
     fseek(F, 0, SEEK_END);
@@ -98,7 +98,7 @@ void ss_read(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     if(f->readers == 1) sem_wait(&f->writelock);
     sem_post(&f->lock);
     sem_post(&f->serviceQueue);
-    respond(-1, fd, ACK, requestID, file_size);
+    respond(-1, fd, ACK, requestID, file_size, NULL, 0);
     while(!feof(F)) {
         n = fread(buf, 1, 8192, F);
         if(n > 0) send(fd, buf, n, 0);
@@ -132,11 +132,11 @@ void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, 
 
     struct file* f = get_file(vpath);
     if(!f) {
-        respond(nm_sockfd, fd, E_WRONG_SS, requestID, 0);
+        respond(nm_sockfd, fd, E_WRONG_SS, requestID, 0, NULL, 0);
         return;
     }
     if(!f) {
-        respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0);
+        respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0, NULL, 0);
         return;
     }
 
@@ -146,7 +146,7 @@ void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, 
     sem_wait(&f->serviceQueue);
     sem_wait(&f->writelock);
     sem_post(&f->serviceQueue);
-    respond(-1, fd, ACK, requestID, 0);
+    respond(-1, fd, ACK, requestID, 0, NULL, 0);
     n += fwrite(tbf + rcl - contentLength, 1, rcl, F);
     while(n < contentLength) {
         int k = recv(fd, buf, 8192, 0);
@@ -156,8 +156,8 @@ void ss_write(int fd, char* vpath, int contentLength, int requestID, char* tbf, 
     }
     fclose(F);
     sem_post(&f->writelock);
-    if(n < contentLength) respond(nm_sockfd, fd, E_INCOMPLETE_WRITE, requestID, 0);
-    else respond(nm_sockfd, fd, SUCCESS, requestID, 0);
+    if(n < contentLength) respond(nm_sockfd, fd, E_INCOMPLETE_WRITE, requestID, 0, NULL, 0);
+    else respond(nm_sockfd, fd, SUCCESS, requestID, 0, NULL, 0);
 
     // Copy the file to other Storage servers
     pthread_t t1, t2;
@@ -181,7 +181,7 @@ struct file* ss_create(int fd, char* vpath, char* mtime, int requestID, int cont
     mtime = tbf + 3;
     struct file* g = NULL;
     if((g = get_file(vpath))) {
-        respond(nm_sockfd, -1, E_FILE_ALREADY_EXISTS, requestID, 0);
+        respond(nm_sockfd, -1, E_FILE_ALREADY_EXISTS, requestID, 0, NULL, 0);
         return g;
     }
     char rpath[MAXPATHLENGTH + 1];
@@ -198,32 +198,32 @@ struct file* ss_create(int fd, char* vpath, char* mtime, int requestID, int cont
     FILE* ff = fopen(rpath, "w");
     fclose(ff);
     struct file* f = add_file_entry(vpath, rpath, mtime, true);
-    if(f == NULL) respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0);
-    else respond(nm_sockfd, fd, SUCCESS, requestID, 0);
+    if(f == NULL) respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0, NULL, 0);
+    else respond(nm_sockfd, fd, SUCCESS, requestID, 0, NULL, 0);
     return f;
 }
 
 void ss_delete(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     struct file* f = get_file(vpath);
-    if(!f) respond(nm_sockfd, fd, E_FILE_DOESNT_EXIST, requestID, 0);
+    if(!f) respond(nm_sockfd, fd, E_FILE_DOESNT_EXIST, requestID, 0, NULL, 0);
     else if(remove(f->rpath)) {
-        respond(nm_sockfd, -1, E_FAULTY_SS, requestID, 0);
+        respond(nm_sockfd, -1, E_FAULTY_SS, requestID, 0, NULL, 0);
     }
     else {
         remove_file_entry(vpath);
-        respond(nm_sockfd, -1, SUCCESS, requestID, 0);
+        respond(nm_sockfd, -1, SUCCESS, requestID, 0, NULL, 0);
     }
 }
 
 void ss_stream(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     struct file* f = get_file(vpath);
     if(!f) {
-        respond(nm_sockfd, fd, E_WRONG_SS, requestID, 0);
+        respond(nm_sockfd, fd, E_WRONG_SS, requestID, 0, NULL, 0);
         return;
     }
     FILE* F = fopen(f->rpath, "rb");
     if(!F) {
-        respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0);
+        respond(nm_sockfd, fd, E_FAULTY_SS, requestID, 0, NULL, 0);
         return;
     }
     fseek(F, 0, SEEK_END);
@@ -236,7 +236,7 @@ void ss_stream(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     if(f->readers == 1) sem_wait(&f->writelock);
     sem_post(&f->lock);
     sem_post(&f->serviceQueue);
-    respond(-1, fd, file_size, requestID, file_size);
+    respond(-1, fd, file_size, requestID, file_size, NULL, 0);
     while(!feof(F)) {
         n = fread(buf, 1, 8192, F);
         if(n > 0) send(fd, buf, n, 0);
@@ -274,11 +274,11 @@ void ss_copy(int fd, char* srcpath, int requestID, char* tbf, int rcl) {
     addr.sin_addr.s_addr = inet_addr(IP);
     int destfd = socket(AF_INET, SOCK_STREAM, 0);
     if(connect(destfd, (struct sockaddr*) &addr, sizeof(addr)) < 0) {
-        respond(nm_sockfd, fd, E_CONN_REFUSED, requestID, 0);
+        respond(nm_sockfd, fd, E_CONN_REFUSED, requestID, 0, NULL, 0);
     }
     free(IP);
     if(!f) {
-        respond(nm_sockfd, fd, E_FILE_DOESNT_EXIST, requestID, 0);
+        respond(nm_sockfd, fd, E_FILE_DOESNT_EXIST, requestID, 0, NULL, 0);
         return;
     }
     FILE* F = fopen(f->rpath, "r");
@@ -294,7 +294,7 @@ void ss_copy(int fd, char* srcpath, int requestID, char* tbf, int rcl) {
         if(n > 0) send(destfd, buf, n, 0);
     }
     fclose(F);
-    respond(nm_sockfd, fd, SUCCESS, requestID, 0);
+    respond(nm_sockfd, fd, SUCCESS, requestID, 0, NULL, 0);
 }
 
 void ss_info(int fd, char* vpath, int requestID, char* tbf, int rcl) {
@@ -327,7 +327,7 @@ void ss_info(int fd, char* vpath, int requestID, char* tbf, int rcl) {
     // Send the file info to the client
     char buffer[1024];
     sprintf(buffer, "File size: %ld bytes\nNumber of lines: %d\nLast modified: %s\n", file_size, line_count, f->mtime);
-    respond(nm_sockfd, fd, SUCCESS, requestID, (long)strlen(buffer));
+    respond(nm_sockfd, fd, SUCCESS, requestID, (long)strlen(buffer), NULL, 0);
     send(fd, buffer, strlen(buffer), 0);
 
     fclose(F);

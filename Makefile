@@ -5,19 +5,25 @@ CFLAGS := -g
 all: ns ss c
 
 build:
-	mkdir build
+	mkdir -p build
 
 build/client: | build
-	mkdir build/client
+	mkdir -p build/client
 
 build/naming-server: | build
-	mkdir build/naming-server
+	mkdir -p build/naming-server
 
 build/storage-server: | build
-	mkdir build/storage-server
+	mkdir -p build/storage-server
+
+build/lib: | build
+	mkdir -p build/lib
 
 build/client/%.o: src/client/%.c | build/client
 	$(CC) $(CFLAGS) -c $< -o $@ -lao
+
+build/lib/%.o: src/lib/%.c | build/lib
+	$(CC) $(CFLAGS) -c $< -o $@
 
 build/naming-server/%.o: src/naming-server/%.c | build/naming-server
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -25,13 +31,13 @@ build/naming-server/%.o: src/naming-server/%.c | build/naming-server
 build/storage-server/%.o: src/storage-server/%.c | build/storage-server
 	$(CC) $(CFLAGS) -c $< -o $@
 
-c: $(patsubst src/client/%.c, build/client/%.o, $(wildcard src/client/*.c)) | build/client
+c: $(patsubst src/client/%.c, build/client/%.o, $(wildcard src/client/*.c)) $(patsubst src/lib/%.c, build/lib/%.o, $(wildcard src/lib/*.c)) | build/client
 	$(CC) $(CFLAGS) -o $@ $^ -lao
 
-ns: $(patsubst src/naming-server/%.c, build/naming-server/%.o, $(wildcard src/naming-server/*.c)) | build/naming-server
+ns: $(patsubst src/naming-server/%.c, build/naming-server/%.o, $(wildcard src/naming-server/*.c)) $(patsubst src/lib/%.c, build/lib/%.o, $(wildcard src/lib/*.c)) | build/naming-server
 	$(CC) $(CFLAGS) -o $@ $^
 
-ss: $(patsubst src/storage-server/%.c, build/storage-server/%.o, $(wildcard src/storage-server/*.c)) | build/storage-server
+ss: $(patsubst src/storage-server/%.c, build/storage-server/%.o, $(wildcard src/storage-server/*.c)) $(patsubst src/lib/%.c, build/lib/%.o, $(wildcard src/lib/*.c)) | build/storage-server
 	$(CC) $(CFLAGS) -o $@ $^
 
 .PHONY: clean
