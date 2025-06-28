@@ -46,7 +46,7 @@ typedef struct request_header {
     enum request_type type;
     char paths[2][PATH_MAX];
     char ip[2][INET_ADDRSTRLEN];
-    uint16_t port[2];
+    uint16_t port[2]; // port[0] is the port that the SS is listening on for client
 } request_header;
 
 void request_to_string(request_header* req);

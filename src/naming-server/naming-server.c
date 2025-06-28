@@ -1,4 +1,5 @@
 #include "main.h"
+#include "../lib/request.h"
 
 // f Global port
 TrieNode *root;
@@ -127,6 +128,34 @@ ssize_t read_n_bytes(int socket_fd, void *buffer, size_t n)
         total_read += bytes_read;
     }
     return total_read;
+}
+
+int read_request_header(int socket_fd, request_header *header)
+{
+    ssize_t bytes_read = recv(socket_fd, header, sizeof(*header), 0);
+     if (bytes_read < 0) {
+        perror("recv failed");
+        return -1;
+    }
+    if (bytes_read < (ssize_t)sizeof(*header)) {
+        fprintf(stderr, "Incomplete request header read\n");
+        return -1;
+    }
+    return 0;
+}
+
+int read_response_header(int socket_fd, response_header *header)
+{
+    ssize_t bytes_read = recv(socket_fd, header, sizeof(*header), 0);
+     if (bytes_read < 0) {
+        perror("recv failed");
+        return -1;
+    }
+    if (bytes_read < (ssize_t)sizeof(*header)) {
+        fprintf(stderr, "Incomplete request header read\n");
+        return -1;
+    }
+    return 0;
 }
 
 void choose_least_full_servers(int *chosen_servers, int *num_chosen)
@@ -1329,70 +1358,45 @@ void *handle_connection(void *arg)
     int client_socket = *(int *)arg;
     free(arg);
 
-    // struct timeval timeout;
-    // timeout.tv_sec = 5;
-    // timeout.tv_usec = 0;
-
-    // setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
     char request_type;
     ssize_t bytes_received;
 
     // Read REQUEST_TYPE (1 byte)
-    bytes_received = read_n_bytes(client_socket, &request_type, 1);
-    if (bytes_received != 1)
+    // bytes_received = read_n_bytes(client_socket, &request_type, 1);
+    request_header* header = malloc(sizeof(request_header));
+    int recv_request_header = read_request_header(client_socket, header);
+    if (recv_request_header != 0)
     {
-        fprintf(stderr, "Failed to read REQUEST_TYPE\n");
+        fprintf(stderr, "Failed to read REQUEST HEADER\n");
         // close(client_socket);
         return NULL;
     }
 
-    // Debug: Print the request_type
-    fprintf(stderr, "Received REQUEST_TYPE: %c (ASCII: %d)\n", request_type, request_type - '0');
+    enum request_type req_type = header->type;
 
     // Handle REQUEST_TYPE
-    if (request_type == ':') // Storage server connection
+    if (req_type == HELLO_FROM_SS) // Storage server connection
     {
         fprintf(stderr, "Received HELLO from storage server\n");
 
-        char id[10];
-        char content_length[21];
-
-        // Read ID (9 bytes)
-        bytes_received = read_n_bytes(client_socket, id, 9);
-        if (bytes_received != 9)
-        {
-            fprintf(stderr, "Failed to read ID\n");
-            // close(client_socket);
-            return NULL;
-        }
-        id[9] = '\0';
-
-        // Read CONTENT_LENGTH (20 bytes)
-        bytes_received = read_n_bytes(client_socket, content_length, 20);
-        if (bytes_received != 20)
-        {
-            fprintf(stderr, "Failed to read content length\n");
-            // close(client_socket);
-            return NULL;
-        }
-        content_length[20] = '\0';
-        int content_len = atoi(content_length);
+        uint64_t id = header->id;
+        uint64_t content_length = header->contentLength;
+        uint16_t client_port = header->port[0];
 
         // Allocate buffer for data
-        char *data_buffer = malloc(content_len + 1);
+        char *data_buffer = malloc(content_length + 1);
         if (data_buffer == NULL)
         {
             fprintf(stderr, "Failed to allocate memory for data buffer\n");
-            // close(client_socket);
             return NULL;
         }
 
         // Read DATA (CONTENT_LENGTH bytes) in a loop
         size_t total_bytes_read = 0;
 
-        while (total_bytes_read < content_len)
+        while (total_bytes_read < content_length)
         {
-            bytes_received = recv(client_socket, data_buffer + total_bytes_read, content_len - total_bytes_read, 0);
+            bytes_received = recv(client_socket, data_buffer + total_bytes_read, content_length - total_bytes_read, 0);
             if (bytes_received <= 0)
             {
                 fprintf(stderr, "Failed to read data\n");
@@ -1402,22 +1406,15 @@ void *handle_connection(void *arg)
             }
             total_bytes_read += bytes_received;
         }
-        // total_bytes_read = recv(client_socket, data_buffer, content_len, 0);
 
-        // if (total_bytes_read < content_len){
-        //     fprintf(stderr, "Failed to read data\n");
-        //     free(data_buffer);
-        //     close(client_socket);
-        //     return NULL;
-        // }
-        if (data_buffer[content_len - 1] == '\0')
+        if (data_buffer[content_length - 1] == '\0')
         {
             fprintf(stderr, "null character because");
         }
         // data_buffer[content_len-1] = '\0'; // Null-terminate the data
-        data_buffer[content_len] = '\0'; // Null-terminate the data
+        data_buffer[content_length] = '\0'; // Null-terminate the data
         // fprintf(stderr, "Received data: %s\n", data_buffer);
-        for (int i = 0; i < content_len; i++)
+        for (int i = 0; i < content_length; i++)
         {
             fprintf(stderr, "%c", data_buffer[i]);
         }
@@ -1425,23 +1422,23 @@ void *handle_connection(void *arg)
 
         // Process the DATA
         // First 5 bytes are the port number
-        char port_str[6];
-        memcpy(port_str, data_buffer, 5);
-        port_str[5] = '\0'; // Null-terminate the port string
-        int port = atoi(port_str);
+        // char port_str[6];
+        // memcpy(port_str, data_buffer, 5);
+        // port_str[5] = '\0'; // Null-terminate the port string
+        // int port = atoi(port_str);
 
         // Remaining data contains strings (paths)
-        char *remaining_data = data_buffer + 5;
+        // char *remaining_data = data_buffer + 5;
         // size_t remaining_length = content_len - 5;
         fprintf(stderr, "Remaining data: ");
-        for (int i = 0; i < sizeof(remaining_data); i++)
+        for (int i = 0; i < sizeof(data_buffer); i++)
         {
-            if (remaining_data[i] == '\0')
+            if (data_buffer[i] == '\0')
             {
                 // fprintf(stderr,"null character");
-                remaining_data[i] = ' ';
+                data_buffer[i] = ' ';
             }
-            fprintf(stderr, "%c", remaining_data[i]);
+            fprintf(stderr, "%c", data_buffer[i]);
         }
         fprintf(stderr, "\n");
 
@@ -1451,7 +1448,7 @@ void *handle_connection(void *arg)
 
         char *line;
         char *saveptr1;
-        line = strtok_r(remaining_data, "\n", &saveptr1);
+        line = strtok_r(data_buffer, "\n", &saveptr1);
         fprintf(stderr, "saveptr: ");
         for (int i = 0; i < sizeof(saveptr1); i++)
         {
@@ -1509,7 +1506,7 @@ void *handle_connection(void *arg)
         accumulated_paths[accumulated_length] = '\0'; // Null-terminate the accumulated paths
 
         // Call handle_storage_server with the port number and accumulated paths
-        handle_storage_server(client_socket, id, port, accumulated_paths);
+        handle_storage_server(client_socket, id, client_port, accumulated_paths);
         fprintf(stderr, "Finished handling storage server\n");
 
         free(data_buffer);
@@ -1517,6 +1514,12 @@ void *handle_connection(void *arg)
         // Continue to listen to the storage server if needed
         while (1)
         {
+            response_header* response_header = malloc(sizeof(response_header));
+            int recv_response_header = read_request_header(client_socket, response_header);
+            uint64_t request_id = response_header->requestID;
+            u_int64_t content_length = response_header->contentLength;
+            enum exit_status status = response_header->status;
+
             // recieve header of 30 bytes with 1 byte request type, 9 bytes request id, 20 bytes content length for acknowledgment
             char header[31];
             bytes_received = read_n_bytes(client_socket, header, 30);
@@ -1563,7 +1566,17 @@ void *handle_connection(void *arg)
             content[content_length] = '\0';
             fprintf(stderr, "content: %s\n", content);
 
-            send(request_array[requestID].client_socket, header, 30, 0);
+            int client_fd = request_array[requestID].client_socket;
+            if (client_fd < 0)
+            {
+                fprintf(stderr, "Invalid client socket for request ID %d\n", requestID);
+                free(content);
+                continue;
+            }
+
+            respond(client_fd,-1,status,requestID,content_length,NULL,NULL);
+
+            send(client_fd, header, 30, 0);
         }
     }
     else
