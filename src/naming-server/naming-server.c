@@ -1225,9 +1225,9 @@ int register_storage_server(const char *ip, int port_c, int port_ns)
     return id;
 }
 
-void handle_storage_server(int client_socket, char *id, int port, char *paths)
+void handle_storage_server(int client_socket, uint64_t id, int port, char *paths)
 {
-    fprintf(stderr, "Handling storage server with ID: %s\n", id);
+    fprintf(stderr, "Handling storage server with ID: %ld\n", id);
 
     // Get storage server IP
     struct sockaddr_in addr;
@@ -1515,10 +1515,11 @@ void *handle_connection(void *arg)
         while (1)
         {
             response_header* response_header = malloc(sizeof(response_header));
-            int recv_response_header = read_request_header(client_socket, response_header);
+            int recv_response_header = read_response_header(client_socket, response_header);
             uint64_t request_id = response_header->requestID;
             u_int64_t content_length = response_header->contentLength;
             enum exit_status status = response_header->status;
+            fprintf(stderr, "Received response header from storage server: request_id: %ld, content_length: %ld, status: %d\n", request_id, content_length, status);
 
             // recieve header of 30 bytes with 1 byte request type, 9 bytes request id, 20 bytes content length for acknowledgment
             char header[31];
@@ -1531,21 +1532,21 @@ void *handle_connection(void *arg)
             }
             header[30] = '\0';
             // Parse header fields
-            char request_type;
-            char req_id_str[10];
-            char content_length_str[21];
+            // char request_type;
+            // char req_id_str[10];
+            // char content_length_str[21];
 
-            request_type = header[0];
-            strncpy(req_id_str, &header[1], 9);
-            req_id_str[9] = '\0';
-            int requestID = atoi(req_id_str);
-            strncpy(content_length_str, &header[10], 20);
-            content_length_str[20] = '\0';
-            int content_length = atoi(content_length_str);
-            fprintf(stderr, "Received request from storage server\n");
-            fprintf(stderr, "request type: %c\n", request_type);
-            fprintf(stderr, "request id: %s\n", req_id_str);
-            fprintf(stderr, "content length: %d\n", content_length);
+            // request_type = header[0];
+            // strncpy(req_id_str, &header[1], 9);
+            // req_id_str[9] = '\0';
+            // int requestID = atoi(req_id_str);
+            // strncpy(content_length_str, &header[10], 20);
+            // content_length_str[20] = '\0';
+            // int content_length = atoi(content_length_str);
+            // fprintf(stderr, "Received request from storage server\n");
+            // fprintf(stderr, "request type: %c\n", request_type);
+            // fprintf(stderr, "request id: %s\n", req_id_str);
+            // fprintf(stderr, "content length: %d\n", content_length);
 
             // read content from storage server
             char *content = malloc(content_length + 1);
@@ -1566,15 +1567,15 @@ void *handle_connection(void *arg)
             content[content_length] = '\0';
             fprintf(stderr, "content: %s\n", content);
 
-            int client_fd = request_array[requestID].client_socket;
+            int client_fd = request_array[request_id].client_socket;
             if (client_fd < 0)
             {
-                fprintf(stderr, "Invalid client socket for request ID %d\n", requestID);
+                fprintf(stderr, "Invalid client socket for request ID %ld\n", request_id);
                 free(content);
                 continue;
             }
 
-            respond(client_fd,-1,status,requestID,content_length,NULL,NULL);
+            respond(client_fd,-1,status,request_id,content_length,NULL,0);
 
             send(client_fd, header, 30, 0);
         }
