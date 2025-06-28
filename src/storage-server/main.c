@@ -155,7 +155,7 @@ int main(int argc, char* argv[]) {
     }
     // fprintf(stderr, "SENDING CONTENT LENGTH %ld\n", byte_count);
     uint16_t ports[2] = {PORT, 0};
-    request(nm_sockfd, -1, HELLO_FROM_SS, byte_count, NULL, NULL, ports);
+    request(nm_sockfd, -1, HELLO_FROM_SS, byte_count - 1, NULL, NULL, ports);
     send_paths(nm_sockfd);
 
     pthread_t nm_thread;

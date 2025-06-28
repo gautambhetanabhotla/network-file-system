@@ -20,20 +20,6 @@ extern unsigned long long int n_file_entries;
 
 extern int nm_sockfd;
 
-// int recv_full(int fd, char* buf, int contentLength) {
-//     char buf2[4097]; int n = 0;
-//     int k;
-//     while(n < contentLength) {
-//         k = recv(fd, buf2, contentLength - n, 0);
-//         if(k <= 0) break;
-//         memcpy(buf + n, buf2, k);
-//         n += k;
-//     }
-//     if(k < 0) return 2; // For other error
-//     if(n < contentLength) return 1; // For premature termination
-//     else return 0; // Success
-// }
-
 /**
  * Handles a client connection by processing the request and responding accordingly.
  *
