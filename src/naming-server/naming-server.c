@@ -1593,78 +1593,42 @@ void *handle_connection(void *arg)
     return NULL;
 }
 
-void handle_client(int client_socket, char initial_request_type)
+void handle_client(int client_socket, enum request_type initial_request_type)
 {
     int flag = 0;
     while (1)
     {
-        char header[30]; // 30 bytes
-        ssize_t bytes_received;
-
+        request_header* header = malloc(sizeof(request_header));
         // We already received the first byte of the header as initial_request_type
         if (flag == 0)
-            header[0] = initial_request_type;
+            header->type = initial_request_type;
         else
-            read_n_bytes(client_socket, &header[0], 1);
+            read_request_header(client_socket, header);
         flag = 1;
         fprintf(stderr, "initial_request_type: %c\n", header[0]);
         // Read the remaining 29 bytes of the header
-        bytes_received = read_n_bytes(client_socket, &header[1], 29);
-        if (bytes_received != 29)
+        read_request_header(client_socket, header);
+        if(header == NULL)
         {
-            fprintf(stderr, "Failed to read header from client\n");
-            // close(client_socket);
-            return;
-        }
-        // fprintf(stderr, "blalalal\n");
-        fprintf(stderr, "header: %s\n", header);
-
-        char request_type = header[0];
-
-        // Parse header fields
-        char id_str[10];
-        char content_length_str[21];
-
-        strncpy(id_str, &header[1], 9);
-        fprintf(stderr, "id_str: %s\n", id_str);
-        id_str[9] = '\0';
-
-        strncpy(content_length_str, &header[10], 20);
-        content_length_str[20] = '\0';
-        fprintf(stderr, "content_length_str: %s\n", content_length_str);
-
-        int client_req_id = atoi(id_str);
-        long content_length = atol(content_length_str);
-        fprintf(stderr, "client_req_id: %d\n", client_req_id);
-        fprintf(stderr, "content_length: %ld\n", content_length);
-
-        // Read content from client
-        char *content = malloc(content_length + 1);
-        if (!content)
-        {
-            fprintf(stderr, "Failed to allocate memory for content\n");
+            fprintf(stderr, "Failed to read request header\n");
             // close(client_socket);
             return;
         }
 
-        bytes_received = read_n_bytes(client_socket, content, content_length);
-        if (bytes_received != content_length)
-        {
-            fprintf(stderr, "Failed to read content from client\n");
-            free(content);
-            // close(client_socket);
-            return;
-        }
-        content[content_length] = '\0';
-        fprintf(stderr, "content: %s\n", content);
+        char request_type = header->type;
+        fprintf(stderr, "request_type: %c\n", request_type);
 
+    
+        uint64_t client_req_id = header->id;
+        fprintf(stderr, "client_req_id: %ld\n", client_req_id);
+      
+        
         pthread_mutex_lock(&global_req_id_mutex);
         int storage_req_id = global_req_id++;
         FILE *fd = fopen("requests.txt", "a");
         if (fd == NULL)
         {
             perror("Error opening requests.txt");
-            free(content);
             pthread_mutex_unlock(&global_req_id_mutex);
             return;
         }

@@ -25,7 +25,6 @@ enum request_type {
     CREATE,               // Request to create a new file or directory.
     COPY,                 // Request to copy a file or directory.
     DELETE,               // Request to delete a file or directory.
-    HELLO_FROM_CLIENT,    // Request to initiate a handshake or greeting with the server.
     HELLO_FROM_SS,        // Hello from a storage server. The request body contains the port number and the list of stored paths.
     SYNC_BACK             // Request to synchronize data back from the server.
 };
