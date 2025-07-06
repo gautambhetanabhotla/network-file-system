@@ -51,5 +51,5 @@ reset:
 .PHONY: test
 test:
 	gcc tests/read.c src/lib/*.c
-	./a.out 127.0.0.1 3001
+	./a.out 127.0.0.1 3000
 	rm -f a.out

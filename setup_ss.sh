@@ -1,5 +1,14 @@
 #!/bin/bash
 
+make
+
+mkdir -p store
+for i in {1..9}; do
+	# cp ss testdir/$i
+	mkdir -p store/$i
+	cp ss store/$i
+done
+
 if [ "$#" -ne 2 ]; then
   echo "Usage: $0 <IP> <PORT>"
   echo "Enter the naming server's details."
@@ -27,8 +36,8 @@ fi
 # Run the command in each pane
 for i in {1..9}; do
   tmux send-keys -t $SESSION_NAME.$i "cd $DIR_NAME/$i" C-m
-  tmux send-keys -t $SESSION_NAME.$i "open ." C-m
-  tmux send-keys -t $SESSION_NAME.$i "./ss $IP $PORT" C-m
+  # tmux send-keys -t $SESSION_NAME.$i "open ." C-m
+  # tmux send-keys -t $SESSION_NAME.$i "./ss $IP $PORT" C-m
 done
 
 # Attach to the session

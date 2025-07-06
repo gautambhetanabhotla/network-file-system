@@ -32,13 +32,11 @@ enum request_type {
 
 /**
  * @struct request_header
- * @brief Represents the header of a request sent between any two hosts.
- * @typedef request_header
  * @param id Unique identifier for the request.
  * @param contentLength Length of the content in the request body.
  * @param type Type of the request, represented by the `request_type` enum.
  * @param paths Array of two strings representing the paths involved in the request.
- * @brief The header of a request sent between any 2 hosts.
+ * @brief Represents the header of a request sent between any two hosts.
  */
 typedef struct request_header {
     uint64_t id;
@@ -76,5 +74,6 @@ typedef struct response_header {
 } response_header;
 
 void respond(int fd1, int fd2, enum exit_status status, int requestID, long contentLength, char* ip, uint16_t port);
+void response_to_string(response_header* res);
 
 #endif

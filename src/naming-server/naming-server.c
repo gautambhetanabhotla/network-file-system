@@ -132,13 +132,13 @@ ssize_t read_n_bytes(int socket_fd, void *buffer, size_t n)
 
 int read_request_header(int socket_fd, request_header *header)
 {
-    ssize_t bytes_read = recv(socket_fd, header, sizeof(*header), 0);
+    ssize_t bytes_read = recv(socket_fd, header, sizeof(*header), MSG_WAITALL);
      if (bytes_read < 0) {
         perror("recv failed");
         return -1;
     }
     if (bytes_read < (ssize_t)sizeof(*header)) {
-        fprintf(stderr, "Incomplete request header read\n");
+        fprintf(stderr, "Incomplete request header read: %ld out of %ld\n", bytes_read, sizeof(*header));
         return -1;
     }
     return 0;
@@ -1221,7 +1221,7 @@ int register_storage_server(const char *ip, int port_c, int port_ns)
     storage_servers[id].port = port_ns;
     storage_servers[id].client_port = port_c;
     storage_servers[id].file_count = 0;
-    printf("Registered Storage Server %d: %s:%d\n", id, ip, port_ns);
+    printf("Registered Storage Server %d: %s:%d\nListening for clients on port %d\n", id, ip, port_ns, port_c);
     return id;
 }
 
@@ -1756,7 +1756,7 @@ void *accept_connections(void *arg)
     while (1)
     {
         int new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen);
-        fprintf(stderr, "new connection accepted");
+        fprintf(stderr, "new connection accepted\n");
         if (new_socket < 0)
         {
             perror("Accept");
