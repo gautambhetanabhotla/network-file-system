@@ -74,16 +74,6 @@ typedef struct {
     struct sockaddr_in client_addr;
 } ClientRequest;
 
-
-// enum 
-enum request_type {
-    READ = 1, WRITE, STREAM, INFO, LIST, CREATE, COPY, DELETE, SYNC, HELLO, CREATED
-};
-
-enum exit_status {
-    SUCCESS, ACK, E_FILE_DOESNT_EXIST, E_INCOMPLETE_WRITE, E_FILE_ALREADY_EXISTS, E_WRONG_SS, E_FAULTY_SS
-};
-
 typedef struct clientData{
     int client_socket;
     int req_id;

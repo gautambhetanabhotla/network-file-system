@@ -92,6 +92,7 @@ struct file* get_file(char* vpath) {
 
 int remove_file_entry(char* vpath) {
     // Remove a file entry from the trie.
+    // TODO: actually remove it from the trie.
     if (!trieRoot) trieRoot = create_trie_node();
     struct trie_node *current = trieRoot;
     for (int i = 0; vpath[i]; i++) {

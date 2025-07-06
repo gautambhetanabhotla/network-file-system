@@ -48,7 +48,8 @@ clean:
 reset:
 	rm -rf storage paths.txt *.bin
 
-req:
-	gcc tests/send_req_to_ss.c
+.PHONY: test
+test:
+	gcc tests/read.c src/lib/*.c
 	./a.out 127.0.0.1 3001
 	rm -f a.out

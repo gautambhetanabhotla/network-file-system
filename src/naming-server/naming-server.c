@@ -1365,6 +1365,7 @@ void *handle_connection(void *arg)
     // bytes_received = read_n_bytes(client_socket, &request_type, 1);
     request_header* header = malloc(sizeof(request_header));
     int recv_request_header = read_request_header(client_socket, header);
+    request_to_string(header);
     if (recv_request_header != 0)
     {
         fprintf(stderr, "Failed to read REQUEST HEADER\n");
@@ -1437,6 +1438,7 @@ void *handle_connection(void *arg)
             {
                 // fprintf(stderr,"null character");
                 data_buffer[i] = ' ';
+                break;
             }
             fprintf(stderr, "%c", data_buffer[i]);
         }
