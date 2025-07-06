@@ -25,7 +25,6 @@ enum request_type {
     CREATE,               // Request to create a new file or directory.
     COPY,                 // Request to copy a file or directory.
     DELETE,               // Request to delete a file or directory.
-    HELLO_FROM_CLIENT,    // Request to initiate a handshake or greeting with the server.
     HELLO_FROM_SS,        // Hello from a storage server. The request body contains the port number and the list of stored paths.
     SYNC_BACK             // Request to synchronize data back from the server.
 };
@@ -58,6 +57,7 @@ enum exit_status {
     SUCCESS,                // Request completed successfully.
     ACK,                    // Request acknowledged. The server may or may not work on it immediately.
     E_FILE_DOESNT_EXIST,    // File doesn't exist.
+    E_INVALID_FILE,         // The file is not valid or corrupted.
     E_INCOMPLETE_WRITE,     // Incomplete write operation.
     E_FILE_ALREADY_EXISTS,  // File already exists.
     E_WRONG_SS,             // The requested file path doesn't exist on this storage server.
