@@ -6,13 +6,9 @@
 #include <netinet/in.h>
 #include <ao/ao.h>
 #include <pthread.h>
-#include <linux/limits.h>
-
-#include "../lib/request.h"
-
 #define TIMEOUT 5 // TIMEOUT in seconds, if ACK is not received in TIMEOUT 
-// #define FILEPATH_SIZE 4096
-#define BUFFER_SIZE (2 * PATH_MAX + 200)
+#define FILEPATH_SIZE 4096
+#define BUFFER_SIZE (2 * FILEPATH_SIZE + 200)
 #define ASYNC_SIZE 2000 // if it >= ASYNC_SIZE, it will be sent asynchronously if there is no --SYNC flag
 
 typedef struct {
@@ -20,93 +16,109 @@ typedef struct {
     int ss_socket;
 } ThreadArgs;
 
-// int send_it(const int op_id, const int req_id, const char * ncontent, const int socket){
 
-//     char * content = (char *) malloc (strlen(ncontent) + 2);
-//     strcpy(content, ncontent);
-//     if(content[strlen(content) - 1] != '\n' && strlen(ncontent) > 0){
-//         content[strlen(content)] = '\n';      
-//         content[strlen(content) + 1] = '\0';
-//     }
-//     else{
-//         content[strlen(content)] = '\0';
-//     }
+int recv_full(int fd, char* buf, int contentLength, int flag) {
+    char buf2[4097]; int n = 0;
+    int k;
+    while(n < contentLength) {
+        k = recv(fd, buf2, contentLength - n, 0);
+        if(k <= 0) break;
+        memcpy(buf + n, buf2, k);
+        n += k;
+    }
+
+    if (k <= 0)
+        return k;
+    return n;
+}
+
+int send_it(const int op_id, const int req_id, const char * ncontent, const int socket){
+
+    char * content = (char *) malloc (strlen(ncontent) + 2);
+    strcpy(content, ncontent);
+    if(content[strlen(content) - 1] != '\n' && strlen(ncontent) > 0){
+        content[strlen(content)] = '\n';      
+        content[strlen(content) + 1] = '\0';
+    }
+    else{
+        content[strlen(content)] = '\0';
+    }
     
 
-//     if (op_id < 0 || op_id > 9 || socket <= 0){
-//         return -1;
-//     }
+    if (op_id < 0 || op_id > 9 || socket <= 0){
+        return -1;
+    }
 
 
-//     char op = '0' + op_id;
-//     char reqid[9];
-//     memset(reqid, 0, sizeof(reqid));
-//     snprintf(reqid, sizeof(reqid), "%d", req_id);
-//     char content_length[20];
-//     memset(content_length, 0, sizeof(content_length));
-//     snprintf(content_length, sizeof(content_length), "%ld", strlen(content));
-//     char request[BUFFER_SIZE];
-//     memset(request, 0, sizeof(request));
-//     request[0]  = op;
-//     strncpy(&request[1], reqid, strlen(reqid));
-//     strncpy(&request[10], content_length, strlen(content_length));
-//     strncpy(&request[30], content, strlen(content));
-//     // snprintf(request, sizeof(request), "%c%s%s%s", op, reqid, content_length, content);
-//     // printf("REQUEST IS\n");
-//     // for(int i = 0; i<30; i++){
-//     //     printf("%c ", request[i]);
-//     // }
-//     // printf("\n");
-//     // printf("content is %s\n", content);
-//     if(send(socket, request, 30 + strlen(content), 0) < 0){
-//         return -1;
-//     } 
-//     return 0;
-// }
+    char op = '0' + op_id;
+    char reqid[9];
+    memset(reqid, 0, sizeof(reqid));
+    snprintf(reqid, sizeof(reqid), "%d", req_id);
+    char content_length[20];
+    memset(content_length, 0, sizeof(content_length));
+    snprintf(content_length, sizeof(content_length), "%ld", strlen(content));
+    char request[BUFFER_SIZE];
+    memset(request, 0, sizeof(request));
+    request[0]  = op;
+    strncpy(&request[1], reqid, strlen(reqid));
+    strncpy(&request[10], content_length, strlen(content_length));
+    strncpy(&request[30], content, strlen(content));
+    // snprintf(request, sizeof(request), "%c%s%s%s", op, reqid, content_length, content);
+    // printf("REQUEST IS\n");
+    // for(int i = 0; i<30; i++){
+    //     printf("%c ", request[i]);
+    // }
+    // printf("\n");
+    // printf("content is %s\n", content);
+    if(send(socket, request, 30 + strlen(content), 0) < 0){
+        return -1;
+    } 
+    return 0;
+}
 
-// int long_send_it(const int op_id, const int req_id, const char * ncontent, const int socket, long long content_size){
-//     if (op_id < 0 || op_id > 9 || socket <= 0){
-//         return -1;
-//     }
+int long_send_it(const int op_id, const int req_id, const char * ncontent, const int socket, long long content_size){
+    if (op_id < 0 || op_id > 9 || socket <= 0){
+        return -1;
+    }
 
-//     char * content = (char *) malloc (strlen(ncontent) + 2);
-//     strcpy(content, ncontent);
+    char * content = (char *) malloc (strlen(ncontent) + 2);
+    strcpy(content, ncontent);
     
-//     if(content[strlen(content) - 1] != '\n' && strlen(ncontent) > 0){
-//         content[strlen(content)] = '\n';      
-//         content[strlen(content) + 1] = '\0';
-//     }
-//     else{
-//         content[strlen(content)] = '\0';
-//     }
+    if(content[strlen(content) - 1] != '\n' && strlen(ncontent) > 0){
+        content[strlen(content)] = '\n';      
+        content[strlen(content) + 1] = '\0';
+    }
+    else{
+        content[strlen(content)] = '\0';
+    }
     
 
-//     if (op_id < 0 || op_id > 9 || socket <= 0){
-//         return -1;
-//     }
+    if (op_id < 0 || op_id > 9 || socket <= 0){
+        return -1;
+    }
 
 
-//     char op = '0' + op_id;
-//     char reqid[9];
-//     memset(reqid, 0, sizeof(reqid));
-//     snprintf(reqid, sizeof(reqid), "%d", req_id);
-//     char content_length[20];
-//     memset(content_length, 0, sizeof(content_length));
-//     snprintf(content_length, sizeof(content_length), "%lld", content_size);
-//     char request[BUFFER_SIZE];
-//     request[0]  = op;
-//     strncpy(&request[1], reqid, strlen(reqid));
-//     strncpy(&request[10], content_length, strlen(content_length));
-//     strncpy(&request[30], content, strlen(content));
-//     // snprintf(request, sizeof(request), "%c%s%s%s", op, reqid, content_length, content);
-//     if(send(socket, request, 30 + strlen(content), 0) < 0){
-//         return -1;
-//     } 
-//     return 0;
-// }
+    char op = '0' + op_id;
+    char reqid[9];
+    memset(reqid, 0, sizeof(reqid));
+    snprintf(reqid, sizeof(reqid), "%d", req_id);
+    char content_length[20];
+    memset(content_length, 0, sizeof(content_length));
+    snprintf(content_length, sizeof(content_length), "%lld", content_size);
+    char request[BUFFER_SIZE];
+    request[0]  = op;
+    strncpy(&request[1], reqid, strlen(reqid));
+    strncpy(&request[10], content_length, strlen(content_length));
+    strncpy(&request[30], content, strlen(content));
+    // snprintf(request, sizeof(request), "%c%s%s%s", op, reqid, content_length, content);
+    if(send(socket, request, 30 + strlen(content), 0) < 0){
+        return -1;
+    } 
+    return 0;
+}
 
 
-int ns_socket; // socket for the naming server
+int ns_socket; // scoket for the naming server
 
 int ns_connect(const char *server_ip, int server_port) {
     struct sockaddr_in server_address;
@@ -151,6 +163,7 @@ int ns_connect(const char *server_ip, int server_port) {
     ns_socket = -1; // Reset the socket to indicate failure
     return -1;
 }
+
 
 // int ss_connect(const char *server_ip, int server_port, int * ss_socket){
 //     struct sockaddr_in server_address;
@@ -198,47 +211,47 @@ int ns_connect(const char *server_ip, int server_port) {
 // ASSUMPTION only write can be asynchronous
 
 int ns_request_print(int op_id, char * content) {
-    // int req_id = 1;
-    // char buffer[BUFFER_SIZE];
-    // ssize_t bytes_received;
+    int req_id = 1;
+    char buffer[BUFFER_SIZE];
+    ssize_t bytes_received;
 
-    // // Send the request
-    // if (send_it(op_id, req_id, content, ns_socket) < 0) {
-    //     perror("Failed to send request to naming server.\n");
+    // Send the request
+    if (send_it(op_id, req_id, content, ns_socket) < 0) {
+        perror("Failed to send request to naming server.\n");
+        return -1;
+    }
+
+    // printf("Response:\n");
+
+    // Receive and print the entire response in chunks
+    bytes_received = recv_full(ns_socket, buffer, 30, 0);
+    buffer[bytes_received] = '\0'; // Null-terminate the buffer
+    printf("HEADER IS %s\n", buffer);
+    int content_length = atoi(&buffer[10]);
+    while(content_length){
+        bytes_received = recv_full(ns_socket, buffer, content_length % (sizeof(buffer) - 1), 0);
+        if (bytes_received < 0){
+            printf("Failed to receive response from naming server.\n");
+            return -1;
+        }
+        content_length -= bytes_received;
+        buffer[bytes_received] = '\0'; // Null-terminate the buffer
+        printf("%s", buffer);          // Print the received chunk
+
+    }
+
+
+    // while ((bytes_received = recv_full(ns_socket, buffer, sizeof(buffer) - 1, 0)) > 0) {
+    //     buffer[bytes_received] = '\0'; // Null-terminate the buffer
+    //     printf("%s", buffer);          // Print the received chunk
+    // }
+
+    // if (bytes_received < 0) {
+    //     perror("Failed to receive response from naming server.\n");
     //     return -1;
     // }
 
-    // // printf("Response:\n");
-
-    // // Receive and print the entire response in chunks
-    // bytes_received = recv_full(ns_socket, buffer, 30, 0);
-    // buffer[bytes_received] = '\0'; // Null-terminate the buffer
-    // printf("HEADER IS %s\n", buffer);
-    // int content_length = atoi(&buffer[10]);
-    // while(content_length){
-    //     bytes_received = recv_full(ns_socket, buffer, content_length % (sizeof(buffer) - 1), 0);
-    //     if (bytes_received < 0){
-    //         printf("Failed to receive response from naming server.\n");
-    //         return -1;
-    //     }
-    //     content_length -= bytes_received;
-    //     buffer[bytes_received] = '\0'; // Null-terminate the buffer
-    //     printf("%s", buffer);          // Print the received chunk
-
-    // }
-
-
-    // // while ((bytes_received = recv_full(ns_socket, buffer, sizeof(buffer) - 1, 0)) > 0) {
-    // //     buffer[bytes_received] = '\0'; // Null-terminate the buffer
-    // //     printf("%s", buffer);          // Print the received chunk
-    // // }
-
-    // // if (bytes_received < 0) {
-    // //     perror("Failed to receive response from naming server.\n");
-    // //     return -1;
-    // // }
-
-    // printf("\n"); // Ensure proper formatting after response
+    printf("\n"); // Ensure proper formatting after response
     return 0;
 }
 
@@ -267,163 +280,163 @@ int copy(const char *source_filepath, const char *dest_folderpath) {
 
 int info(const char * filepath){
     
-    // char response[BUFFER_SIZE];
-    // char request[BUFFER_SIZE];
-    // if (send_it(4, 1, filepath, ns_socket) < 0){
-    //     perror("Failed to send request to naming server.\n");
-    //     return -1;
-    // }
+    char response[BUFFER_SIZE];
+    char request[BUFFER_SIZE];
+    if (send_it(4, 1, filepath, ns_socket) < 0){
+        perror("Failed to send request to naming server.\n");
+        return -1;
+    }
 
-    // ssize_t ns_bytes_received;
+    ssize_t ns_bytes_received;
 
-    // ns_bytes_received = recv_full(ns_socket, response, 30, 0);
+    ns_bytes_received = recv_full(ns_socket, response, 30, 0);
     
     
-    // if (ns_bytes_received < 30) {
-    //     perror("Failed to receive response from naming server.\n");
-    //     return -1;
-    // }
-    // response[ns_bytes_received] = '\0';
-    // char content_length[20];
-    // memset(content_length, 0, sizeof(content_length));
-    // strncpy(content_length, &response[10], 20);
+    if (ns_bytes_received < 30) {
+        perror("Failed to receive response from naming server.\n");
+        return -1;
+    }
+    response[ns_bytes_received] = '\0';
+    char content_length[20];
+    memset(content_length, 0, sizeof(content_length));
+    strncpy(content_length, &response[10], 20);
 
-    // if (atoi(content_length) < 0){
-    //     printf("Sorry, the file was not found or there was some other error in the (naming) server.\n");
-    //     return -1;
-    // }
+    if (atoi(content_length) < 0){
+        printf("Sorry, the file was not found or there was some other error in the (naming) server.\n");
+        return -1;
+    }
 
-    // char reqid[9];
-    // memset(reqid, 0, sizeof(reqid));
-    // strncpy(reqid, &response[1], 9);
-    // int req_id = atoi(reqid);
-    // fprintf(stderr, "%s response\n", response);
+    char reqid[9];
+    memset(reqid, 0, sizeof(reqid));
+    strncpy(reqid, &response[1], 9);
+    int req_id = atoi(reqid);
+    fprintf(stderr, "%s response\n", response);
 
-    // ns_bytes_received = recv_full(ns_socket, response, atoi(content_length), 0);
-    // response[ns_bytes_received] = '\0';
+    ns_bytes_received = recv_full(ns_socket, response, atoi(content_length), 0);
+    response[ns_bytes_received] = '\0';
 
-    // if (ns_bytes_received != atoi(content_length)) {
-    //     perror("Failed to receive response from naming server.\n");
-    //     return -1;
-    // }
+    if (ns_bytes_received != atoi(content_length)) {
+        perror("Failed to receive response from naming server.\n");
+        return -1;
+    }
     
-    // char * ss_ip;
-    // int ss_portnum;
-    // char * saveptr;
+    char * ss_ip;
+    int ss_portnum;
+    char * saveptr;
 
-    // ss_ip = strtok_r(response, "\n", &saveptr);
-    // char *port_str = strtok_r(NULL, "\n", &saveptr);
-    // fprintf(stderr, "%s response\n", response);
-    // if (!ss_ip || !port_str) {
-    //     fprintf(stderr, "\"%s\": response received from naming server.\n", response);
-    //     return -1;
-    // }
-    // ss_portnum = atoi(port_str);     // Convert port string to integer
+    ss_ip = strtok_r(response, "\n", &saveptr);
+    char *port_str = strtok_r(NULL, "\n", &saveptr);
+    fprintf(stderr, "%s response\n", response);
+    if (!ss_ip || !port_str) {
+        fprintf(stderr, "\"%s\": response received from naming server.\n", response);
+        return -1;
+    }
+    ss_portnum = atoi(port_str);     // Convert port string to integer
 
-    // fprintf(stderr, "IP: %s\nPort: %d\n", ss_ip, ss_portnum);
-    // // Check if is less than 0
-    // if (ss_portnum < 0) {
-    //     printf("Sorry, the file was not found.\n");
-    //     return -1;
-    // }
+    fprintf(stderr, "IP: %s\nPort: %d\n", ss_ip, ss_portnum);
+    // Check if is less than 0
+    if (ss_portnum < 0) {
+        printf("Sorry, the file was not found.\n");
+        return -1;
+    }
 
-    // int ss_socket;
-    // struct sockaddr_in server_addr;
+    int ss_socket;
+    struct sockaddr_in server_addr;
 
-    // // Create the socket
-    // ss_socket = socket(AF_INET, SOCK_STREAM, 0);
-    // if (ss_socket < 0) {
-    //     perror("Failed to create socket for storage server\n");
-    //     return -1;
-    // }
+    // Create the socket
+    ss_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (ss_socket < 0) {
+        perror("Failed to create socket for storage server\n");
+        return -1;
+    }
 
-    // // Set up the server address structure
-    // memset(&server_addr, 0, sizeof(server_addr));
-    // server_addr.sin_family = AF_INET;
-    // server_addr.sin_port = htons(ss_portnum);
+    // Set up the server address structure
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(ss_portnum);
 
-    // // Convert the IP address from text to binary form
-    // if (inet_pton(AF_INET, ss_ip, &server_addr.sin_addr) <= 0) {
-    //     perror("Invalid IP address format for storage server\n");
-    //     //close(ss_socket);
-    //     return -1;
-    // }
+    // Convert the IP address from text to binary form
+    if (inet_pton(AF_INET, ss_ip, &server_addr.sin_addr) <= 0) {
+        perror("Invalid IP address format for storage server\n");
+        //close(ss_socket);
+        return -1;
+    }
 
-    // int attempt = 0;
-    // while (attempt < TIMEOUT) {
-    //     printf("Trying to connect to storage server...\n");
-    //     if (connect(ss_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0) {
-    //         // printf("Connected to storage server at %s:%d\n", ss_ip, ss_portnum);
-    //         break;
-    //     }
+    int attempt = 0;
+    while (attempt < TIMEOUT) {
+        printf("Trying to connect to storage server...\n");
+        if (connect(ss_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0) {
+            // printf("Connected to storage server at %s:%d\n", ss_ip, ss_portnum);
+            break;
+        }
 
-    //     sleep(1); // Wait 1 second before retrying
-    //     attempt++;
-    //     if (attempt >= TIMEOUT){
-    //         perror("Failed to connect to the storage server.\n");
-    //         //close(ss_socket);
-    //         return -1;
-    //     }
-    // }
+        sleep(1); // Wait 1 second before retrying
+        attempt++;
+        if (attempt >= TIMEOUT){
+            perror("Failed to connect to the storage server.\n");
+            //close(ss_socket);
+            return -1;
+        }
+    }
 
-    // char length_buffer[31]; // For the 20-byte length response + null terminator
-    // char data_buffer[BUFFER_SIZE]; // To store the actual data
-    // ssize_t ss_bytes_received = 0;
-    // long long int data_length;
+    char length_buffer[31]; // For the 20-byte length response + null terminator
+    char data_buffer[BUFFER_SIZE]; // To store the actual data
+    ssize_t ss_bytes_received = 0;
+    long long int data_length;
 
-    // // Send the request to the server
-    // if (send_it(4, req_id, filepath, ss_socket) < 0) {
-    //     perror("Failed to send request to storage server\n");
-    //     //close(ss_socket);
-    //     return -1;
-    // }
+    // Send the request to the server
+    if (send_it(4, req_id, filepath, ss_socket) < 0) {
+        perror("Failed to send request to storage server\n");
+        //close(ss_socket);
+        return -1;
+    }
 
-    // // Receive the 30-byte header
-    // ss_bytes_received = recv_full(ss_socket, length_buffer, 30, 0);
-    // if (ss_bytes_received <  30) {
-    //     perror("Failed to receive correct response from storage server\n");
-    //     //close(ss_socket);
-    //     return -1;
-    // }
+    // Receive the 30-byte header
+    ss_bytes_received = recv_full(ss_socket, length_buffer, 30, 0);
+    if (ss_bytes_received <  30) {
+        perror("Failed to receive correct response from storage server\n");
+        //close(ss_socket);
+        return -1;
+    }
 
-    // length_buffer[ss_bytes_received] = '\0'; // Null-terminate the length buffer
+    length_buffer[ss_bytes_received] = '\0'; // Null-terminate the length buffer
 
-    // data_length = atoi(&length_buffer[10]); // Convert the length to an integer
+    data_length = atoi(&length_buffer[10]); // Convert the length to an integer
 
-    // // Check if the length is negative
-    // if (data_length < 0) {
-    //     fprintf(stderr, "Error: Received negative data length\n"); //(%lld)\n", data_length
-    //     //close(ss_socket);
-    //     return -1;
-    // }
+    // Check if the length is negative
+    if (data_length < 0) {
+        fprintf(stderr, "Error: Received negative data length\n"); //(%lld)\n", data_length
+        //close(ss_socket);
+        return -1;
+    }
 
-    // ss_bytes_received = 0;
-    // int num;
+    ss_bytes_received = 0;
+    int num;
 
-    // // while(1){
-    // // Receive the actual data
-    // num = recv_full(ss_socket, data_buffer, (data_length - ss_bytes_received) % (BUFFER_SIZE - 1), 0);
-    // if (num < 0){
-    //     perror("Failed to receive info from storage server\n");
-    //     return 0;
-    //     // break;
-    // }
-    // if (num == 0){
-    //     perror("Failed to receive info from storage server\n");
+    // while(1){
+    // Receive the actual data
+    num = recv_full(ss_socket, data_buffer, (data_length - ss_bytes_received) % (BUFFER_SIZE - 1), 0);
+    if (num < 0){
+        perror("Failed to receive info from storage server\n");
+        return 0;
+        // break;
+    }
+    if (num == 0){
+        perror("Failed to receive info from storage server\n");
         
-    //     // break;
-    //     return 0;
+        // break;
+        return 0;
+    }
+    ss_bytes_received += num;
+    if (ss_bytes_received == data_length) {
+        data_buffer[num] = '\0';
+        printf("%s", data_buffer);
+        printf("\nSuccess! Info read wholly!\n");
+        // break;
+    }
     // }
-    // ss_bytes_received += num;
-    // if (ss_bytes_received == data_length) {
-    //     data_buffer[num] = '\0';
-    //     printf("%s", data_buffer);
-    //     printf("\nSuccess! Info read wholly!\n");
-    //     // break;
-    // }
-    // // }
 
-    // //close(ss_socket); 
+    //close(ss_socket); 
     return 0;
 }
 
@@ -434,293 +447,435 @@ int list(const char *folderpath) {
     return ns_request_print(5, request);
 }
 
+
+// int ns_request(const char * request, char * response, int response_size) {
+    
+//     ssize_t bytes_received;
+
+//     // Send the request
+//     if (send(ns_socket, request, strlen(request), 0) < 0) {
+//         perror("Failed to send request to naming server.\n");
+//         return -1;
+//     }
+
+//     // printf("Response:\n");
+
+//     // Receive and print the entire response in chunks  
+//     bytes_received = recv_full(ns_socket, response, response_size, 0);
+//     response[bytes_received] = '\0';
+    
+    
+//     if (bytes_received < 0) {
+//         perror("Failed to receive response from naming server.\n");
+//         return -1;
+//     }
+//     // printf("\n"); // Ensure proper formatting after response
+//     return 0;
+// }
+
 int read_it(const char * filepath){
     
-    request(ns_socket, -1, READ, 0, (char *[]){(char *)filepath, NULL}, NULL, NULL);
-    response_header response;
-    ssize_t ns_bytes_received = recv(ns_socket, &response, sizeof(response), MSG_WAITALL);
-
-    if (ns_bytes_received <  sizeof(response)) {
-        perror("Failed to receive full response from naming server\n");
+    char response[BUFFER_SIZE];
+    char request[BUFFER_SIZE];
+    if (send_it(1, 1, filepath, ns_socket) < 0){
+        perror("Failed to send request to naming server.\n");
         return -1;
     }
 
-    int ss_sockfd = connect_with_ip_port(response.ip, response.port);
-    if (ss_sockfd < 0) {
-        fprintf(stderr, "Failed to connect to storage server at %s:%d\n", response.ip, response.port);
-        return -1;
-    }
-    fprintf(stderr, "Connected to storage server at %s:%d\n", response.ip, response.port);
+    ssize_t ns_bytes_received;
+
+    ns_bytes_received = recv_full(ns_socket, response, 30, 0);
     
-    request(ss_sockfd, -1, READ, 0, (char *[]){(char *)filepath, NULL}, NULL, NULL);
-    response_header ss_response;
-    ssize_t ss_bytes_received = recv(ss_sockfd, &ss_response, sizeof(ss_response), MSG_WAITALL);
-    response_to_string(&ss_response);
-    if (ss_bytes_received < sizeof(ss_response)) {
-        perror("Failed to receive full response from storage server\n");
-        close(ss_sockfd);
+    
+    if (ns_bytes_received <  30) {
+        perror("Failed to receive response from naming server.\n");
+        return -1;
+    }
+    response[ns_bytes_received] = '\0';
+    char content_length[20];
+    memset(content_length, 0, sizeof(content_length));
+    strncpy(content_length, &response[10], 20);
+
+    if (atoi(content_length) < 0){
+        printf("Sorry, the file was not found or there was some other error in the (naming) server.\n");
         return -1;
     }
 
-    uint64_t data_bytes_received = 0;
-    while (data_bytes_received < ss_response.contentLength) {
-        char data_buffer[BUFFER_SIZE];
-        ssize_t n = recv(ss_sockfd, data_buffer, sizeof(data_buffer), 0);
-        if (n < 0) {
-            perror("Failed to receive data from storage server\n");
-            close(ss_sockfd);
+    char reqid[9];
+    memset(reqid, 0, sizeof(reqid));
+    strncpy(reqid, &response[1], 9);
+    int req_id = atoi(reqid);
+    fprintf(stderr, "%s response\n", response);
+
+    ns_bytes_received = recv_full(ns_socket, response, atoi(content_length), 0);
+    response[ns_bytes_received] = '\0';
+
+    if (ns_bytes_received != atoi(content_length)) {
+        perror("Failed to receive response from naming server.\n");
+        return -1;
+    }
+    
+    char * ss_ip;
+    int ss_portnum;
+    char * saveptr;
+
+    ss_ip = strtok_r(response, "\n", &saveptr);
+    char *port_str = strtok_r(NULL, "\n", &saveptr);
+    fprintf(stderr, "%s response\n", response);
+    if (!ss_ip || !port_str) {
+        fprintf(stderr, "\"%s\": response received from naming server.\n", response);
+        return -1;
+    }
+    ss_portnum = atoi(port_str);     // Convert port string to integer
+
+    fprintf(stderr, "IP: %s\nPort: %d\n", ss_ip, ss_portnum);
+    // Check if is less than 0
+    if (ss_portnum < 0) {
+        printf("Sorry, the file was not found.\n");
+        return -1;
+    }
+
+    int ss_socket;
+    struct sockaddr_in server_addr;
+
+    // Create the socket
+    ss_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (ss_socket < 0) {
+        perror("Failed to create socket for storage server\n");
+        return -1;
+    }
+
+    // Set up the server address structure
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(ss_portnum);
+
+    // Convert the IP address from text to binary form
+    if (inet_pton(AF_INET, ss_ip, &server_addr.sin_addr) <= 0) {
+        perror("Invalid IP address format for storage server\n");
+        //close(ss_socket);
+        return -1;
+    }
+
+    int attempt = 0;
+    while (attempt < TIMEOUT) {
+        printf("Trying to connect to storage server...\n");
+        if (connect(ss_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0) {
+            // printf("Connected to storage server at %s:%d\n", ss_ip, ss_portnum);
+            break;
+        }
+
+        sleep(1); // Wait 1 second before retrying
+        attempt++;
+        if (attempt >= TIMEOUT){
+            perror("Failed to connect to the storage server.\n");
+            //close(ss_socket);
             return -1;
         }
-        if (n == 0) {
-            break; // Connection closed by the server
-        }
-        fwrite(data_buffer, 1, n, stdout); // Print the received data
-        data_bytes_received += n;
     }
 
-    close(ss_sockfd);
+    char length_buffer[31]; // For the 20-byte length response + null terminator
+    char data_buffer[BUFFER_SIZE]; // To store the actual data
+    ssize_t ss_bytes_received = 0;
+    long long int data_length;
+
+    // Send the request to the server
+    if (send_it(1, req_id, filepath, ss_socket) < 0) {
+        perror("Failed to send request to storage server\n");
+        //close(ss_socket);
+        return -1;
+    }
+
+    // Receive the 30-byte header
+    ss_bytes_received = recv_full(ss_socket, length_buffer, 30, 0);
+    if (ss_bytes_received <  30) {
+        perror("Failed to receive correct response from storage server\n");
+        //close(ss_socket);
+        return -1;
+    }
+
+    length_buffer[ss_bytes_received] = '\0'; // Null-terminate the length buffer
+
+    data_length = atoi(&length_buffer[10]); // Convert the length to an integer
+
+    // Check if the length is negative
+    if (data_length < 0) {
+        fprintf(stderr, "Error: Received negative data length\n"); //(%lld)\n", data_length
+        //close(ss_socket);
+        return -1;
+    }
+
+    if (data_length == 0) {
+        printf("\nSuccess! Data read wholly!\n");
+        return 0;
+    }
+    ss_bytes_received = 0;
+
+    int num;
+    while(1){
+        // Receive the actual data
+        num = recv_full(ss_socket, data_buffer, (data_length - ss_bytes_received) % (BUFFER_SIZE - 1), 0);
+        if (num < 0){
+            perror("Failed to receive complete data\n");
+            break;
+        }
+        if (num == 0){
+            perror("Failed to receive complete data, connection with storage server terminated.\n");
+            break;
+        }
+        ss_bytes_received += num;
+        if (ss_bytes_received == data_length) {
+            data_buffer[num] = '\0';
+            printf("%s", data_buffer);
+            printf("\nSuccess! Data read wholly!\n");
+            break;
+        }
+        printf("%s", data_buffer);
+    }
+
+    //close(ss_socket); 
     return 0;
 }
 
 int stream(const char * filepath){
     
-    // char response[BUFFER_SIZE];
-    // char request[BUFFER_SIZE];
-    // if (send_it(3, 1, filepath, ns_socket) < 0){
-    //     perror("Failed to send request to naming server.\n");
-    //     return -1;
-    // }
+    char response[BUFFER_SIZE];
+    char request[BUFFER_SIZE];
+    if (send_it(3, 1, filepath, ns_socket) < 0){
+        perror("Failed to send request to naming server.\n");
+        return -1;
+    }
 
-    // ssize_t ns_bytes_received;
+    ssize_t ns_bytes_received;
 
-    // ns_bytes_received = recv_full(ns_socket, response, 30, 0);
+    ns_bytes_received = recv_full(ns_socket, response, 30, 0);
     
     
-    // if (ns_bytes_received <  30) {
-    //     perror("Failed to receive response from naming server.\n");
-    //     return -1;
-    // }
-    // response[ns_bytes_received] = '\0';
-    // char content_length[20];
-    // memset(content_length, 0, sizeof(content_length));
-    // strncpy(content_length, &response[10], 20);
+    if (ns_bytes_received <  30) {
+        perror("Failed to receive response from naming server.\n");
+        return -1;
+    }
+    response[ns_bytes_received] = '\0';
+    char content_length[20];
+    memset(content_length, 0, sizeof(content_length));
+    strncpy(content_length, &response[10], 20);
 
-    // if (atoi(content_length) < 0){
-    //     printf("Sorry, the file was not found or there was some other error in the (naming) server.\n");
-    //     return -1;
-    // }
+    if (atoi(content_length) < 0){
+        printf("Sorry, the file was not found or there was some other error in the (naming) server.\n");
+        return -1;
+    }
     
 
-    // char reqid[9];
-    // memset(reqid, 0, sizeof(reqid));
-    // strncpy(reqid, &response[1], 9);
-    // int req_id = atoi(reqid);
+    char reqid[9];
+    memset(reqid, 0, sizeof(reqid));
+    strncpy(reqid, &response[1], 9);
+    int req_id = atoi(reqid);
 
-    // ns_bytes_received = recv_full(ns_socket, response, atoi(content_length), 0);
-    // response[ns_bytes_received] = '\0';
+    ns_bytes_received = recv_full(ns_socket, response, atoi(content_length), 0);
+    response[ns_bytes_received] = '\0';
 
-    // if (ns_bytes_received != atoi(content_length)) {
-    //     perror("Failed to receive response from naming server.\n");
-    //     return -1;
-    // }
+    if (ns_bytes_received != atoi(content_length)) {
+        perror("Failed to receive response from naming server.\n");
+        return -1;
+    }
 
 
     
-    // char * ss_ip;
-    // int ss_portnum;
-    // char * saveptr;
+    char * ss_ip;
+    int ss_portnum;
+    char * saveptr;
 
-    // ss_ip = strtok_r(response, "\n", &saveptr);
-    // char *port_str = strtok_r(NULL, "\n", &saveptr);
+    ss_ip = strtok_r(response, "\n", &saveptr);
+    char *port_str = strtok_r(NULL, "\n", &saveptr);
 
-    // if (!ss_ip || !port_str) {
-    //     fprintf(stderr, "\"%s\": response received from naming server.\n", response);
-    //     return -1;
-    // }
-    // ss_portnum = atoi(port_str);     // Convert port string to integer
-
-
-    // // Check if is less than 0
-    // if (ss_portnum < 0) {
-    //     printf("Sorry, the file was not found.\n");
-    //     return -1;
-    // }
+    if (!ss_ip || !port_str) {
+        fprintf(stderr, "\"%s\": response received from naming server.\n", response);
+        return -1;
+    }
+    ss_portnum = atoi(port_str);     // Convert port string to integer
 
 
-    // int ss_socket;
-    // struct sockaddr_in server_addr;
-
-    // // Create the socket
-    // ss_socket = socket(AF_INET, SOCK_STREAM, 0);
-    // if (ss_socket < 0) {
-    //     perror("Failed to create socket for storage server\n");
-    //     return -1;
-    // }
-
-    // // Set up the server address structure
-    // memset(&server_addr, 0, sizeof(server_addr));
-    // server_addr.sin_family = AF_INET;
-    // server_addr.sin_port = htons(ss_portnum);
-
-    // // Convert the IP address from text to binary form
-    // if (inet_pton(AF_INET, ss_ip, &server_addr.sin_addr) <= 0) {
-    //     perror("Invalid IP address format for storage server\n");
-    //     //close(ss_socket);
-    //     return -1;
-    // }
-
-    // int attempt = 0;
-    // while (attempt < TIMEOUT) {
-    //     printf("Trying to connect to storage server...\n");
-    //     if (connect(ss_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0) {
-    //         // printf("Connected to storage server at %s:%d\n", ss_ip, ss_portnum);
-    //         break;
-    //     }
-
-    //     sleep(1); // Wait 1 second before retrying
-    //     attempt++;
-    //     if (attempt >= TIMEOUT){
-    //         perror("Failed to connect to the storage server.\n");
-    //         //close(ss_socket);
-    //         return -1;
-    //     }
-    // }
-
-    // char length_buffer[31]; // For the 20-byte length response + null terminator
-    // char data_buffer[BUFFER_SIZE]; // To store the actual data
-    // ssize_t ss_bytes_received = 0;
-    // long long int data_length;
-
-    // // Send the request to the server
-    // if (send_it(1, req_id, filepath, ss_socket) < 0) {
-    //     perror("Failed to send request to storage server\n");
-    //     //close(ss_socket);
-    //     return -1;
-    // }
-
-    // // Receive the 30-byte header
-    // ss_bytes_received = recv_full(ss_socket, length_buffer, 30, 0);
-    // if (ss_bytes_received < 30) {
-    //     perror("Failed to receive correct response from storage server\n");
-    //     //close(ss_socket);
-    //     return -1;
-    // }
-
-    // length_buffer[ss_bytes_received] = '\0'; // Null-terminate the length buffer
-
-    // data_length = atoi(&length_buffer[10]); // Convert the length to an integer
+    // Check if is less than 0
+    if (ss_portnum < 0) {
+        printf("Sorry, the file was not found.\n");
+        return -1;
+    }
 
 
+    int ss_socket;
+    struct sockaddr_in server_addr;
 
-    // // Check if the length is negative
-    // if (data_length < 0) {
-    //     fprintf(stderr, "Error: Received negative data length\n"); //(%lld)\n", data_length
-    //     //close(ss_socket);
-    //     return -1;
-    // }
+    // Create the socket
+    ss_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (ss_socket < 0) {
+        perror("Failed to create socket for storage server\n");
+        return -1;
+    }
 
-    // ao_device *device;
-    // ao_sample_format format;
-    // int default_driver;
+    // Set up the server address structure
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(ss_portnum);
 
-    // // Initialize the AO library
-    // ao_initialize();
+    // Convert the IP address from text to binary form
+    if (inet_pton(AF_INET, ss_ip, &server_addr.sin_addr) <= 0) {
+        perror("Invalid IP address format for storage server\n");
+        //close(ss_socket);
+        return -1;
+    }
 
-    // // Set up the sample format for 16-bit mono PCM data
-    // format.bits = 16;
-    // format.channels = 1;  // Mono output
-    // format.rate = 44100;  // Sample rate (Hz)
-    // format.byte_format = AO_FMT_LITTLE;
+    int attempt = 0;
+    while (attempt < TIMEOUT) {
+        printf("Trying to connect to storage server...\n");
+        if (connect(ss_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0) {
+            // printf("Connected to storage server at %s:%d\n", ss_ip, ss_portnum);
+            break;
+        }
 
-    // // Find the default audio driver
-    // default_driver = ao_default_driver_id();
+        sleep(1); // Wait 1 second before retrying
+        attempt++;
+        if (attempt >= TIMEOUT){
+            perror("Failed to connect to the storage server.\n");
+            //close(ss_socket);
+            return -1;
+        }
+    }
 
-    // // Open the audio device
-    // device = ao_open_live(default_driver, &format, NULL);
-    // if (device == NULL) {
-    //     fprintf(stderr, "Error: Could not open audio device\n");
-    //     ao_shutdown();
-    //     return -1;
-    // }
+    char length_buffer[31]; // For the 20-byte length response + null terminator
+    char data_buffer[BUFFER_SIZE]; // To store the actual data
+    ssize_t ss_bytes_received = 0;
+    long long int data_length;
+
+    // Send the request to the server
+    if (send_it(1, req_id, filepath, ss_socket) < 0) {
+        perror("Failed to send request to storage server\n");
+        //close(ss_socket);
+        return -1;
+    }
+
+    // Receive the 30-byte header
+    ss_bytes_received = recv_full(ss_socket, length_buffer, 30, 0);
+    if (ss_bytes_received < 30) {
+        perror("Failed to receive correct response from storage server\n");
+        //close(ss_socket);
+        return -1;
+    }
+
+    length_buffer[ss_bytes_received] = '\0'; // Null-terminate the length buffer
+
+    data_length = atoi(&length_buffer[10]); // Convert the length to an integer
 
 
-    // ss_bytes_received = 0;
-    // int num;
 
-    // ss_bytes_received = 0;
-    // while (ss_bytes_received < data_length) {
-    //     int remaining = data_length - ss_bytes_received;
-    //     int to_read = (remaining < BUFFER_SIZE) ? remaining : BUFFER_SIZE;
+    // Check if the length is negative
+    if (data_length < 0) {
+        fprintf(stderr, "Error: Received negative data length\n"); //(%lld)\n", data_length
+        //close(ss_socket);
+        return -1;
+    }
+
+    ao_device *device;
+    ao_sample_format format;
+    int default_driver;
+
+    // Initialize the AO library
+    ao_initialize();
+
+    // Set up the sample format for 16-bit mono PCM data
+    format.bits = 16;
+    format.channels = 1;  // Mono output
+    format.rate = 44100;  // Sample rate (Hz)
+    format.byte_format = AO_FMT_LITTLE;
+
+    // Find the default audio driver
+    default_driver = ao_default_driver_id();
+
+    // Open the audio device
+    device = ao_open_live(default_driver, &format, NULL);
+    if (device == NULL) {
+        fprintf(stderr, "Error: Could not open audio device\n");
+        ao_shutdown();
+        return -1;
+    }
+
+
+    ss_bytes_received = 0;
+    int num;
+
+    ss_bytes_received = 0;
+    while (ss_bytes_received < data_length) {
+        int remaining = data_length - ss_bytes_received;
+        int to_read = (remaining < BUFFER_SIZE) ? remaining : BUFFER_SIZE;
         
-    //     num = recv_full(ss_socket, data_buffer, to_read, 0);
-    //     if (num <= 0) {
-    //         perror("Failed to receive audio data");
-    //         break;
-    //     }
+        num = recv_full(ss_socket, data_buffer, to_read, 0);
+        if (num <= 0) {
+            perror("Failed to receive audio data");
+            break;
+        }
         
-    //     ao_play(device, data_buffer, num);
-    //     ss_bytes_received += num;
-    // }
+        ao_play(device, data_buffer, num);
+        ss_bytes_received += num;
+    }
 
-    // // Close the audio device and shutdown the AO library
-    // ao_close(device);
-    // ao_shutdown();
-    // //close(ss_socket); 
+    // Close the audio device and shutdown the AO library
+    ao_close(device);
+    ao_shutdown();
+    //close(ss_socket); 
     return 0;
 }
 
 
 void * write_async(void *args) {
-    // ThreadArgs *threadArgs = (ThreadArgs *)args;
-    // FILE *f = threadArgs->file;
-    // int ss_socket = threadArgs->ss_socket;
+    ThreadArgs *threadArgs = (ThreadArgs *)args;
+    FILE *f = threadArgs->file;
+    int ss_socket = threadArgs->ss_socket;
 
-    // size_t bytesRead;
-    // long long int totalbytesread = 0;
-    // long long int fileSize;
-    // char data_buffer[BUFFER_SIZE];
-    // char ss_response[31];
+    size_t bytesRead;
+    long long int totalbytesread = 0;
+    long long int fileSize;
+    char data_buffer[BUFFER_SIZE];
+    char ss_response[31];
 
-    // // Calculate file size
-    // fseek(f, 0, SEEK_END);
-    // fileSize = ftell(f);
-    // fseek(f, 0, SEEK_SET);
+    // Calculate file size
+    fseek(f, 0, SEEK_END);
+    fileSize = ftell(f);
+    fseek(f, 0, SEEK_SET);
 
-    // while ((bytesRead = fread(data_buffer, 1, BUFFER_SIZE, f)) > 0) {
-    //     totalbytesread += bytesRead;
+    while ((bytesRead = fread(data_buffer, 1, BUFFER_SIZE, f)) > 0) {
+        totalbytesread += bytesRead;
 
-    //     if (totalbytesread == fileSize) {
-    //         if (send(ss_socket, data_buffer, bytesRead, 0) < 0) {
-    //             printf("Failed to send complete data to storage server with socket number %d. %lld bytes sent successfully.\n", ss_socket, totalbytesread - bytesRead);
-    //             fclose(f);
-    //             //close(ss_socket);
-    //             free(threadArgs);
-    //             return NULL;
-    //         }
-    //         printf("\nSuccess! Data wholly sent to storage server at socket %d!\n", ss_socket);
-    //         if (recv_full(ss_socket, ss_response, 30, 0) < 30 || ss_response[0] != '0') {
-    //             printf("However, storage server did not acknowledge the whole data being written.\n");
-    //         } else {
-    //             printf("Storage server at socket %d acknowledged the whole data being successfully written.\n", ss_socket);
-    //         }
-    //         break;
-    //     }
-    //     if (send(ss_socket, data_buffer, BUFFER_SIZE, 0) < 0) {
-    //         printf("Failed to send complete data to storage server at socket %d. %lld bytes sent successfully.\n", ss_socket, totalbytesread - bytesRead);
-    //         fclose(f);
-    //         //close(ss_socket);
-    //         free(threadArgs);
-    //         return NULL;
-    //     }
-    // }
+        if (totalbytesread == fileSize) {
+            if (send(ss_socket, data_buffer, bytesRead, 0) < 0) {
+                printf("Failed to send complete data to storage server with socket number %d. %lld bytes sent successfully.\n", ss_socket, totalbytesread - bytesRead);
+                fclose(f);
+                //close(ss_socket);
+                free(threadArgs);
+                return NULL;
+            }
+            printf("\nSuccess! Data wholly sent to storage server at socket %d!\n", ss_socket);
+            if (recv_full(ss_socket, ss_response, 30, 0) < 30 || ss_response[0] != '0') {
+                printf("However, storage server did not acknowledge the whole data being written.\n");
+            } else {
+                printf("Storage server at socket %d acknowledged the whole data being successfully written.\n", ss_socket);
+            }
+            break;
+        }
+        if (send(ss_socket, data_buffer, BUFFER_SIZE, 0) < 0) {
+            printf("Failed to send complete data to storage server at socket %d. %lld bytes sent successfully.\n", ss_socket, totalbytesread - bytesRead);
+            fclose(f);
+            //close(ss_socket);
+            free(threadArgs);
+            return NULL;
+        }
+    }
 
-    // if (ferror(f)) {
-    //     perror("Error reading file");
-    // }
+    if (ferror(f)) {
+        perror("Error reading file");
+    }
 
-    // fclose(f);
-    // //close(ss_socket);
-    // free(threadArgs);
+    fclose(f);
+    //close(ss_socket);
+    free(threadArgs);
     return NULL;
 }
 
@@ -728,284 +883,284 @@ void * write_async(void *args) {
 int write_it(const char * sourcefilepath, const char * destfilepath, bool synchronous){
 
 
-    // FILE * f = fopen(sourcefilepath, "rb");
-    // if (f == NULL) {
-    //     perror("Error opening file");
-    //     return -1;
-    // }
+    FILE * f = fopen(sourcefilepath, "rb");
+    if (f == NULL) {
+        perror("Error opening file");
+        return -1;
+    }
 
-    // fclose(f);
+    fclose(f);
 
     
-    // char response[BUFFER_SIZE];
-    // char request[BUFFER_SIZE];
-    // if (send_it(2, 1, destfilepath, ns_socket) < 0){
-    //     perror("Failed to send request to naming server.\n");
-    //     return -1;
-    // }
+    char response[BUFFER_SIZE];
+    char request[BUFFER_SIZE];
+    if (send_it(2, 1, destfilepath, ns_socket) < 0){
+        perror("Failed to send request to naming server.\n");
+        return -1;
+    }
 
-    // ssize_t ns_bytes_received;
+    ssize_t ns_bytes_received;
 
-    // ns_bytes_received = recv_full(ns_socket, response, 30, 0);
-    // response[ns_bytes_received] = '\0';
-    // fprintf(stderr, "%s\n", response);
+    ns_bytes_received = recv_full(ns_socket, response, 30, 0);
+    response[ns_bytes_received] = '\0';
+    fprintf(stderr, "%s\n", response);
     
-    // if (ns_bytes_received < 30) {
-    //     perror("Failed to receive response from naming server.\n");
-    //     return -1;
-    // }
+    if (ns_bytes_received < 30) {
+        perror("Failed to receive response from naming server.\n");
+        return -1;
+    }
 
-    // char content_length[20];
-    // memset(content_length, 0, sizeof(content_length));
-    // strncpy(content_length, &response[10], 20);
+    char content_length[20];
+    memset(content_length, 0, sizeof(content_length));
+    strncpy(content_length, &response[10], 20);
 
 
-    // if (atoi(content_length) < 0){
-    //     printf("Sorry, the folder was not found or there was some other error in the (naming) server.\n");
-    //     return -1;
-    // }
+    if (atoi(content_length) < 0){
+        printf("Sorry, the folder was not found or there was some other error in the (naming) server.\n");
+        return -1;
+    }
 
-    // char reqid[9];
-    // memset(reqid, 0, sizeof(reqid));
-    // strncpy(reqid, &response[1], 9);
-    // int req_id = atoi(reqid);
+    char reqid[9];
+    memset(reqid, 0, sizeof(reqid));
+    strncpy(reqid, &response[1], 9);
+    int req_id = atoi(reqid);
 
-    // ns_bytes_received = recv_full(ns_socket, response, atoi(content_length), 0);
-    // response[ns_bytes_received] = '\0';
-    // if (ns_bytes_received != atoi(content_length)) {
-    //     perror("Failed to receive response from naming server.\n");
-    //     return -1;
-    // }
+    ns_bytes_received = recv_full(ns_socket, response, atoi(content_length), 0);
+    response[ns_bytes_received] = '\0';
+    if (ns_bytes_received != atoi(content_length)) {
+        perror("Failed to receive response from naming server.\n");
+        return -1;
+    }
 
-    // fprintf(stderr, "%s\n", response);
+    fprintf(stderr, "%s\n", response);
 
-    // char * ss_ip;
-    // int ss_portnum;
-    // char * saveptr;
+    char * ss_ip;
+    int ss_portnum;
+    char * saveptr;
 
-    // ss_ip = strtok_r(response, "\n", &saveptr);
-    // char *port_str = strtok_r(NULL, "\n", &saveptr);
+    ss_ip = strtok_r(response, "\n", &saveptr);
+    char *port_str = strtok_r(NULL, "\n", &saveptr);
 
-    // if (!ss_ip || !port_str) {
-    //     fprintf(stderr, "\"%s\": response received from naming server.\n", response);
-    //     return -1;
-    // }
-    // ss_portnum = atoi(port_str);     // Convert port string to integer
+    if (!ss_ip || !port_str) {
+        fprintf(stderr, "\"%s\": response received from naming server.\n", response);
+        return -1;
+    }
+    ss_portnum = atoi(port_str);     // Convert port string to integer
 
-    // char * ss_ip2;
-    // int ss_portnum2 = -1;
+    char * ss_ip2;
+    int ss_portnum2 = -1;
 
-    // char * ss_ip3;
-    // int ss_portnum3 = -1;
+    char * ss_ip3;
+    int ss_portnum3 = -1;
     
-    // if(saveptr){
-    //     ss_ip2 = NULL;
-    //     ss_ip3 = NULL;
-    //     ss_ip2 = strtok_r(response, "\n", &saveptr);
-    //     port_str = strtok_r(NULL, "\n", &saveptr);
+    if(saveptr){
+        ss_ip2 = NULL;
+        ss_ip3 = NULL;
+        ss_ip2 = strtok_r(response, "\n", &saveptr);
+        port_str = strtok_r(NULL, "\n", &saveptr);
 
 
 
-    //     if (port_str != NULL){
-    //         ss_portnum2 = atoi(port_str);
-    //     }
+        if (port_str != NULL){
+            ss_portnum2 = atoi(port_str);
+        }
 
-    //     if (saveptr){
-    //         ss_ip3 = strtok_r(response, "\n", &saveptr);
-    //         port_str = strtok_r(NULL, "\n", &saveptr);
+        if (saveptr){
+            ss_ip3 = strtok_r(response, "\n", &saveptr);
+            port_str = strtok_r(NULL, "\n", &saveptr);
 
-    //         if (port_str != NULL){
-    //             ss_portnum3 = atoi(port_str);
-    //         }
-    //     }
+            if (port_str != NULL){
+                ss_portnum3 = atoi(port_str);
+            }
+        }
 
-    // }
-    // // Check if is less than 0
-    // if (ss_portnum < 0) {
-    //     printf("Sorry, the file was not found.\n");
-    //     return -1;
-    // }
-
-
-    // int ss_socket;
-    // struct sockaddr_in server_addr;
-
-    // // Create the socket
-    // ss_socket = socket(AF_INET, SOCK_STREAM, 0);
-    // if (ss_socket < 0) {
-    //     perror("Failed to create socket for storage server\n");
-    //     return -1;
-    // }
-
-    // // Set up the server address structure
-    // memset(&server_addr, 0, sizeof(server_addr));
-    // server_addr.sin_family = AF_INET;
-    // server_addr.sin_port = htons(ss_portnum);
-
-    // // Convert the IP address from text to binary form
-    // if (inet_pton(AF_INET, ss_ip, &server_addr.sin_addr) <= 0) {
-    //     perror("Invalid IP address format for storage server\n");
-    //     //close(ss_socket);
-    //     return -1;
-    // }
-
-    // int attempt = 0;
-    // while (attempt < TIMEOUT) {
-    //     printf("Trying to connect to storage server...\n");
-    //     if (connect(ss_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0) {
-    //         // printf("Connected to storage server at %s:%d\n", ss_ip, ss_portnum);
-    //         break;
-    //     }
-
-    //     sleep(1); // Wait 1 second before retrying
-    //     attempt++;
-    //     if (attempt >= TIMEOUT){
-    //         perror("Failed to connect to the storage server.\n");
-    //         //close(ss_socket);
-    //         return -1;
-    //     }
-    // }
-
-    // char length_buffer[31]; // For the 20-byte length response + null terminator
-    // char data_buffer[BUFFER_SIZE]; // To store the actual data
-    // ssize_t ss_bytes_received = 0;
-    // long long int data_length;
-    // char * destfilepath2 = (char *) malloc(sizeof(char) * (strlen(destfilepath) + 100));
-
-    // strcpy(&destfilepath2[strlen(destfilepath2)], destfilepath);
-    // destfilepath2[strlen(destfilepath2)] = '\n';
-    // if(ss_ip2 != NULL && ss_ip3 != NULL){
-    //     sprintf(&destfilepath2[strlen(destfilepath2)],"%s\n%d\n%s\n%d\n", ss_ip2, ss_portnum2, ss_ip3, ss_portnum3);        
-    // }
-    // else if(ss_ip2 != NULL){
-    //     sprintf(&destfilepath2[strlen(destfilepath2)], "%s\n%d\n127.0.0.1\n-1\n", ss_ip2, ss_portnum2);
-    // }
-    // else{
-    //     sprintf(&destfilepath2[strlen(destfilepath2)], "127.0.0.1\n-1\n127.0.0.1\n-1\n");
-    // }
-
-    // destfilepath2[strlen(destfilepath2)] = '\0';
-
-    // fprintf(stderr, "%sNEWLINE\n", destfilepath2);
-
-    // f = fopen(sourcefilepath, "rb");
-    // if (f == NULL) {
-    //     perror("Error opening file");
-    //     //close(ss_socket);
-    //     return -1;
-    // }
-
-    // // Seek to the end of the file
-    // fseek(f, 0, SEEK_END);
-    // long fileSize = ftell(f); // Get the current position in the file (size in bytes)
-    // rewind(f);
-
-    // if (fileSize == -1L) {
-    //     perror("Error determining file size");
-    //     //close(ss_socket);
-    //     fclose(f);
-    //     return -1;
-    // }
+    }
+    // Check if is less than 0
+    if (ss_portnum < 0) {
+        printf("Sorry, the file was not found.\n");
+        return -1;
+    }
 
 
-    // if(long_send_it(2, req_id, destfilepath2, ss_socket, strlen(destfilepath2) + fileSize) < 0){
-    //     printf("Failed to send request to storage server.\n");
-    // }
+    int ss_socket;
+    struct sockaddr_in server_addr;
 
-    // char ss_response[31];
-    // memset(ss_response, 0, sizeof(ss_response));
-    // if (recv_full(ss_socket, ss_response, 30, 0) < 0){
-    //     printf("Failed to receive response from storage server.\n");
-    //     //close(ss_socket);
-    //     fclose(f);
-    //     return -1;
-    // }
+    // Create the socket
+    ss_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (ss_socket < 0) {
+        perror("Failed to create socket for storage server\n");
+        return -1;
+    }
 
-    // ss_response[30] = '\0';
+    // Set up the server address structure
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(ss_portnum);
 
-    // if (ss_response[0] != '1'){
-    //     printf("Storage server did not accept the request.\n");
-    //     //close(ss_socket);
-    //     fclose(f);
-    //     return -1;        
-    // }
-    // // now, ACK 1 has been received from SS
-    // // request acknowledged, we can begin writing
-    // if (synchronous || fileSize <= ASYNC_SIZE){
+    // Convert the IP address from text to binary form
+    if (inet_pton(AF_INET, ss_ip, &server_addr.sin_addr) <= 0) {
+        perror("Invalid IP address format for storage server\n");
+        //close(ss_socket);
+        return -1;
+    }
 
-    //     size_t bytesRead;
-    //     long long int totalbytesread = 0;
+    int attempt = 0;
+    while (attempt < TIMEOUT) {
+        printf("Trying to connect to storage server...\n");
+        if (connect(ss_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0) {
+            // printf("Connected to storage server at %s:%d\n", ss_ip, ss_portnum);
+            break;
+        }
 
-    //     while ((bytesRead = fread(data_buffer, 1, BUFFER_SIZE, f)) > 0) {
-    //         totalbytesread += bytesRead;
-    //         // Simulate transmission by writing to stdout
+        sleep(1); // Wait 1 second before retrying
+        attempt++;
+        if (attempt >= TIMEOUT){
+            perror("Failed to connect to the storage server.\n");
+            //close(ss_socket);
+            return -1;
+        }
+    }
 
-    //         if (totalbytesread == fileSize){
-    //             if (send(ss_socket, data_buffer,  bytesRead, 0)<0){
-    //                 printf("Failed to send complete data to storage server. %lld bytes sent successfully.\n", totalbytesread - bytesRead);
-    //                 fclose(f);
-    //                 //close(ss_socket);
-    //                 return -1;
-    //             }
-    //             printf("\nSuccess! Data wholly sent!\n");
-    //             if(recv_full(ss_socket, ss_response, 30, 0)< 30 || ss_response[0] > '1'){
-    //                 printf("However, storage server did not acknowledge the whole data being written.\n");
-    //             }
-    //             else{
-    //                 printf("Storage server acknowledged the whole data being successfully written.\n");
-    //             }
-    //             break;
-    //         }
-    //         if (send(ss_socket, data_buffer,  BUFFER_SIZE, 0)<0){
-    //             printf("Failed to send complete data to storage server. %lld bytes sent successfully.\n", totalbytesread - bytesRead);
-    //             fclose(f);
-    //             //close(ss_socket);
-    //             return -1;
-    //         }
-    //     }
+    char length_buffer[31]; // For the 20-byte length response + null terminator
+    char data_buffer[BUFFER_SIZE]; // To store the actual data
+    ssize_t ss_bytes_received = 0;
+    long long int data_length;
+    char * destfilepath2 = (char *) malloc(sizeof(char) * (strlen(destfilepath) + 100));
 
-    //     if (ferror(f)) {
-    //         perror("Error reading file");
-    //         fclose(f);
-    //         //close(ss_socket);
-    //         return -1;
-    //     }
+    strcpy(&destfilepath2[strlen(destfilepath2)], destfilepath);
+    destfilepath2[strlen(destfilepath2)] = '\n';
+    if(ss_ip2 != NULL && ss_ip3 != NULL){
+        sprintf(&destfilepath2[strlen(destfilepath2)],"%s\n%d\n%s\n%d\n", ss_ip2, ss_portnum2, ss_ip3, ss_portnum3);        
+    }
+    else if(ss_ip2 != NULL){
+        sprintf(&destfilepath2[strlen(destfilepath2)], "%s\n%d\n127.0.0.1\n-1\n", ss_ip2, ss_portnum2);
+    }
+    else{
+        sprintf(&destfilepath2[strlen(destfilepath2)], "127.0.0.1\n-1\n127.0.0.1\n-1\n");
+    }
+
+    destfilepath2[strlen(destfilepath2)] = '\0';
+
+    fprintf(stderr, "%sNEWLINE\n", destfilepath2);
+
+    f = fopen(sourcefilepath, "rb");
+    if (f == NULL) {
+        perror("Error opening file");
+        //close(ss_socket);
+        return -1;
+    }
+
+    // Seek to the end of the file
+    fseek(f, 0, SEEK_END);
+    long fileSize = ftell(f); // Get the current position in the file (size in bytes)
+    rewind(f);
+
+    if (fileSize == -1L) {
+        perror("Error determining file size");
+        //close(ss_socket);
+        fclose(f);
+        return -1;
+    }
+
+
+    if(long_send_it(2, req_id, destfilepath2, ss_socket, strlen(destfilepath2) + fileSize) < 0){
+        printf("Failed to send request to storage server.\n");
+    }
+
+    char ss_response[31];
+    memset(ss_response, 0, sizeof(ss_response));
+    if (recv_full(ss_socket, ss_response, 30, 0) < 0){
+        printf("Failed to receive response from storage server.\n");
+        //close(ss_socket);
+        fclose(f);
+        return -1;
+    }
+
+    ss_response[30] = '\0';
+
+    if (ss_response[0] != '1'){
+        printf("Storage server did not accept the request.\n");
+        //close(ss_socket);
+        fclose(f);
+        return -1;        
+    }
+    // now, ACK 1 has been received from SS
+    // request acknowledged, we can begin writing
+    if (synchronous || fileSize <= ASYNC_SIZE){
+
+        size_t bytesRead;
+        long long int totalbytesread = 0;
+
+        while ((bytesRead = fread(data_buffer, 1, BUFFER_SIZE, f)) > 0) {
+            totalbytesread += bytesRead;
+            // Simulate transmission by writing to stdout
+
+            if (totalbytesread == fileSize){
+                if (send(ss_socket, data_buffer,  bytesRead, 0)<0){
+                    printf("Failed to send complete data to storage server. %lld bytes sent successfully.\n", totalbytesread - bytesRead);
+                    fclose(f);
+                    //close(ss_socket);
+                    return -1;
+                }
+                printf("\nSuccess! Data wholly sent!\n");
+                if(recv_full(ss_socket, ss_response, 30, 0)< 30 || ss_response[0] > '1'){
+                    printf("However, storage server did not acknowledge the whole data being written.\n");
+                }
+                else{
+                    printf("Storage server acknowledged the whole data being successfully written.\n");
+                }
+                break;
+            }
+            if (send(ss_socket, data_buffer,  BUFFER_SIZE, 0)<0){
+                printf("Failed to send complete data to storage server. %lld bytes sent successfully.\n", totalbytesread - bytesRead);
+                fclose(f);
+                //close(ss_socket);
+                return -1;
+            }
+        }
+
+        if (ferror(f)) {
+            perror("Error reading file");
+            fclose(f);
+            //close(ss_socket);
+            return -1;
+        }
 
         
 
-    //     fclose(f);
-    //     //close(ss_socket);
-    //     return 0;
+        fclose(f);
+        //close(ss_socket);
+        return 0;
 
-    // }
-    // else{// ASYNC write activated here
+    }
+    else{// ASYNC write activated here
 
-    //     ThreadArgs *threadArgs = malloc(sizeof(ThreadArgs));
-    //     if (!threadArgs) {
-    //         perror("Failed to allocate memory for thread arguments\n");
-    //         fclose(f);
-    //         return -1;
-    //     }
+        ThreadArgs *threadArgs = malloc(sizeof(ThreadArgs));
+        if (!threadArgs) {
+            perror("Failed to allocate memory for thread arguments\n");
+            fclose(f);
+            return -1;
+        }
 
-    //     threadArgs->file = f;
-    //     threadArgs->ss_socket = ss_socket;
+        threadArgs->file = f;
+        threadArgs->ss_socket = ss_socket;
 
-    //     pthread_t thread_id;
-    //     if (pthread_create(&thread_id, NULL, write_async, threadArgs) != 0) {
-    //         perror("Failed to create thread\n");
-    //         free(threadArgs);
-    //         //close(ss_socket);
-    //         fclose(f);
-    //         return -1;
-    //     }
-    //     printf("Asynchronous write was successfully activated because the file was too large. Your request with reqid %d is being processed at ss_socket %d\n", req_id, ss_socket);
+        pthread_t thread_id;
+        if (pthread_create(&thread_id, NULL, write_async, threadArgs) != 0) {
+            perror("Failed to create thread\n");
+            free(threadArgs);
+            //close(ss_socket);
+            fclose(f);
+            return -1;
+        }
+        printf("Asynchronous write was successfully activated because the file was too large. Your request with reqid %d is being processed at ss_socket %d\n", req_id, ss_socket);
 
-    //     // Detach the thread so it runs independently
-    //     pthread_detach(thread_id);
+        // Detach the thread so it runs independently
+        pthread_detach(thread_id);
 
-    //     return 0;
-    // }
-    return 0;
+        return 0;
+    }
+
 }
 
 // accepted operations: 
@@ -1090,7 +1245,7 @@ int main(int argc, char* argv[]) {
 
 
         // Split command and arguments
-        char operation[50], arg1[PATH_MAX], arg2[PATH_MAX];
+        char operation[50], arg1[FILEPATH_SIZE], arg2[FILEPATH_SIZE];
         int num_args = sscanf(request, "%49s %4096s %4096s", operation, arg1, arg2);
         // printf("%s\n%s\n%s IS OVER", operation, arg1, arg2);
 

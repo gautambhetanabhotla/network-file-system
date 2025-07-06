@@ -1,5 +1,4 @@
-#include "../lib/request.h"
-#include "storageserver.h"
+#include "requests.h"
 #include "files.h"
 
 #include <stdio.h>
@@ -17,17 +16,13 @@
 #include <signal.h>
 
 extern sem_t n_file_sem;
-int nm_sockfd;
 
 void sigpipe_handler(int sig) {
     // fprintf(stderr, "SIGPIPE received\n");
 }
 
-/**
- * Creates a storage directory with 0777 permissions to store
- * files if it doesn't already exist.
- * If the directory cannot be created, the program exits with status 1
- */
+int nm_sockfd;
+
 void createStorageDirectory() {
     DIR* storage_dir = opendir("./storage");
     if(storage_dir == NULL) {
@@ -41,19 +36,34 @@ void createStorageDirectory() {
     closedir(storage_dir);
 }
 
-/**
- * Sends the paths of files stored on this storage server from the paths.txt file to the naming server.
- * The format of each line in paths.txt is: <virtual_path> <real_path> <modification_time>
- * Example: /virtual/path /real/path 2023-10-01T12:00:00
- */
+int connect_to_naming_server(int argc, char* argv[]) {
+    int nm_sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if(nm_sockfd < 0) {
+        perror("Socket couldn't be created");
+        exit(1);
+    }
+    int nm_server_port = atoi(argv[2]);
+    char* nm_server_ip = argv[1];
+    struct sockaddr_in nm_server_addr;
+    nm_server_addr.sin_family = AF_INET;
+    nm_server_addr.sin_port = htons(nm_server_port);
+    if(inet_pton(AF_INET, nm_server_ip, &nm_server_addr.sin_addr) <= 0) {
+        perror("Invalid/unsupported address");
+        exit(1);
+    }
+    if(connect(nm_sockfd, (struct sockaddr*)&nm_server_addr, sizeof(nm_server_addr)) < 0) {
+        perror("Connection to naming server failed");
+        exit(1);
+    }
+    return nm_sockfd;
+}
+
 void send_paths(int nm_sockfd) {
     fprintf(stderr, "Sending paths to naming server...\n");
     FILE* pathsfile = fopen("./paths.txt", "r");
-    if(pathsfile == NULL) {
-        pathsfile = fopen("./paths.txt", "w");
-        fclose(pathsfile);
-        pathsfile = fopen("./paths.txt", "r");
-    }
+    if(pathsfile == NULL) pathsfile = fopen("./paths.txt", "w");
+    fclose(pathsfile);
+    pathsfile = fopen("./paths.txt", "r");
     while(!feof(pathsfile)) {
         int flag = 0;
         char vpath[MAXPATHLENGTH + 1], rpath[MAXPATHLENGTH + 1];
@@ -105,7 +115,6 @@ void send_paths(int nm_sockfd) {
 }
 
 void* handle_ns(void* arg) {
-    nm_sockfd = *(int*)arg;
     while(1) handle_client(&nm_sockfd);
 }
 
@@ -143,9 +152,9 @@ int main(int argc, char* argv[]) {
     }
 
     // Initialise stuff with naming server
-    nm_sockfd = connect_with_ip_port(argv[1], atoi(argv[2]));
+    nm_sockfd = connect_to_naming_server(argc, argv);
     // send(nm_sockfd, "STORAGESERVER", strlen("STORAGESERVER"), 0);
-    long long byte_count = 0;
+    long byte_count = 0;
     FILE* pathsfile = fopen("./paths.txt", "r");
     if(pathsfile) {
         fseek(pathsfile, 0, SEEK_END);
@@ -154,8 +163,12 @@ int main(int argc, char* argv[]) {
         fclose(pathsfile);
     }
     // fprintf(stderr, "SENDING CONTENT LENGTH %ld\n", byte_count);
-    uint16_t ports[2] = {PORT, 0};
-    request(nm_sockfd, -1, HELLO_FROM_SS, byte_count - 1, NULL, NULL, ports);
+    request(nm_sockfd, -1, HELLO, (long)5 + byte_count);
+    // Send the port you're using to listen for clients
+    char port_str[6] = {'\0'};
+    sprintf(port_str, "%d", PORT);
+    send(nm_sockfd, port_str, sizeof(port_str) - 1, 0);
+    // Send the list of accessible paths
     send_paths(nm_sockfd);
 
     pthread_t nm_thread;
@@ -165,7 +178,7 @@ int main(int argc, char* argv[]) {
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
         pthread_t client_thread;
-        int client_fd = accept(ss_sockfd, (struct sockaddr*)&client_addr, &client_len);
+        int client_fd = accept(ss_sockfd, (struct sockaddr *)&client_addr, &client_len);
         pthread_create(&client_thread, NULL, handle_client, (void *)&client_fd);
         // pthread_detach(client_thread);
     }
