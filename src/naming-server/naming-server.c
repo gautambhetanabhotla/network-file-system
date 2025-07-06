@@ -1563,7 +1563,7 @@ void handle_client(int client_socket, request_header* header)
     int flag = 0;
     while (1)
     {
-        request_header* header = malloc(sizeof(request_header));
+        if(flag) recv(client_socket, header, sizeof(request_header), MSG_WAITALL);
         // We already received the first byte of the header as initial_request_type
 
         char request_type = header->type;
@@ -1670,7 +1670,7 @@ void handle_client(int client_socket, request_header* header)
             fprintf(stderr, "Invalid request type received: %c\n", request_type);
             send_error_response(client_socket, client_req_id, E_INVALID_REQUEST);
         }
-        // free(content);
+        flag = 1;
     }
 }
 

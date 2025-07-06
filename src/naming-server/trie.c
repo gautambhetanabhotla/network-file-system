@@ -171,7 +171,7 @@ FileEntry* search_path(const char *path, TrieNode *root)
     for (int i = 1; path[i]; i++)
     {
         unsigned char index = (unsigned char)path[i];
-        if (!current->children[index])
+        if (!(current->children[index]))
             return NULL; // Not found
         current = current->children[index];
     }
