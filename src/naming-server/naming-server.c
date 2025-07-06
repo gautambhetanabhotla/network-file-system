@@ -227,6 +227,7 @@ void handle_rsi_request(int client_socket, int client_req_id, char *content, lon
         }
         // Get storage server information
         // check first online storage server
+        //ahhh
         int id = -1;
         for (int i = 0; i < 3; i++)
         {
@@ -279,82 +280,82 @@ void handle_rsi_request(int client_socket, int client_req_id, char *content, lon
     fprintf(stderr, "Handled rsi request %d %s %ld %c\n", client_req_id, content, content_length, request_type);
 }
 
-void handle_write_request(int client_socket, int client_req_id, char* content, long content_length){
-    char *path_buffer = malloc(content_length + 1);
-    if (path_buffer == NULL)
-    {
-        fprintf(stderr, "Failed to allocate memory for data buffer\n");
-        // close(client_socket);
-        return;
-    }
-    int total_read = 0;
-    fprintf(stderr, "content_length: %ld\n", content_length);
-    fprintf(stderr, "content: %s\n", content);
-    // content[content_length-1] = '\0';
+// void handle_write_request(int client_socket, int client_req_id, char* content, long content_length){
+//     char *path_buffer = malloc(content_length + 1);
+//     if (path_buffer == NULL)
+//     {
+//         fprintf(stderr, "Failed to allocate memory for data buffer\n");
+//         // close(client_socket);
+//         return;
+//     }
+//     int total_read = 0;
+//     fprintf(stderr, "content_length: %ld\n", content_length);
+//     fprintf(stderr, "content: %s\n", content);
+//     // content[content_length-1] = '\0';
 
-    FileEntry *file = search_path(content, root);
-    if (file == NULL)
-    {
-        fprintf(stderr, "path not found\n");
-        send_error_response(client_socket, client_req_id, "path not found\n");
-    } 
-    else {
-        // Collect storage server info
-        // check if any storage server is offline
-        int offline = 0;
-        for (int i = 0; i < 3; i++)
-        {
-            if(file->ss_ids[i] == -1){
-                continue;
-            }
-            if (storage_servers[file->ss_ids[i]].offline == 1)
-            {
-                offline = 1;
-                break;
-            }
-        }
-        if(offline == 1){
-            fprintf(stderr, "One or more storage servers are offline\n");
-            send_error_response(client_socket, client_req_id, "One or more storage servers are offline\n");
-            free(path_buffer);
-            return;
-        }
-        StorageServerInfo ss_info[3];
-        int server_count = 0;
-        for (int i = 0; i < 3; i++)
-        {
-            if (file->ss_ids[i] != -1)
-            {
-                int ss_index = file->ss_ids[i];
-                ss_info[server_count++] = storage_servers[ss_index];
-            }
-        }
+//     FileEntry *file = search_path(content, root);
+//     if (file == NULL)
+//     {
+//         fprintf(stderr, "path not found\n");
+//         send_error_response(client_socket, client_req_id, "path not found\n");
+//     } 
+//     else {
+//         // Collect storage server info
+//         // check if any storage server is offline
+//         int offline = 0;
+//         for (int i = 0; i < 3; i++)
+//         {
+//             if(file->ss_ids[i] == -1){
+//                 continue;
+//             }
+//             if (storage_servers[file->ss_ids[i]].offline == 1)
+//             {
+//                 offline = 1;
+//                 break;
+//             }
+//         }
+//         if(offline == 1){
+//             fprintf(stderr, "One or more storage servers are offline\n");
+//             send_error_response(client_socket, client_req_id, "One or more storage servers are offline\n");
+//             free(path_buffer);
+//             return;
+//         }
+//         StorageServerInfo ss_info[3];
+//         int server_count = 0;
+//         for (int i = 0; i < 3; i++)
+//         {
+//             if (file->ss_ids[i] != -1)
+//             {
+//                 int ss_index = file->ss_ids[i];
+//                 ss_info[server_count++] = storage_servers[ss_index];
+//             }
+//         }
 
-        if (server_count == 0)
-        {
-            fprintf(stderr, "No storage servers found for file\n");
-            send_error_response(client_socket, client_req_id, "No storage servers found for file\n");
-            free(path_buffer);
-            return;
-        }
+//         if (server_count == 0)
+//         {
+//             fprintf(stderr, "No storage servers found for file\n");
+//             send_error_response(client_socket, client_req_id, "No storage servers found for file\n");
+//             free(path_buffer);
+//             return;
+//         }
 
-        // Prepare response
-        char response[1024] = {0};
-        for (int i = 0; i < server_count; i++)
-        {
-            char server_info[256];
-            snprintf(server_info, sizeof(server_info), "%s\n%d\n", ss_info[i].ip_address, ss_info[i].client_port);
-            strncat(response, server_info, sizeof(response) - strlen(response) - 1);
-        }
+//         // Prepare response
+//         char response[1024] = {0};
+//         for (int i = 0; i < server_count; i++)
+//         {
+//             char server_info[256];
+//             snprintf(server_info, sizeof(server_info), "%s\n%d\n", ss_info[i].ip_address, ss_info[i].client_port);
+//             strncat(response, server_info, sizeof(response) - strlen(response) - 1);
+//         }
 
-        // Send response to client
-        send_success(client_socket, client_req_id, response);
-        fprintf(stderr, "Sent storage server info to client: %s\n", response);
-    }
+//         // Send response to client
+//         send_success(client_socket, client_req_id, response);
+//         fprintf(stderr, "Sent storage server info to client: %s\n", response);
+//     }
 
-    free(path_buffer);
-    fprintf(stderr, "Handled write request %d %s %ld\n", client_req_id, content, content_length);
-}
+//     free(path_buffer);
+//     fprintf(stderr, "Handled write request %d %s %ld\n", client_req_id, content, content_length);
+// }
 
 
 int delete_file(const char *path, FileEntry *entry, int client_req_id)
@@ -440,212 +441,212 @@ int delete_file(const char *path, FileEntry *entry, int client_req_id)
     return 0;
 }
 
-void handle_create_request(int client_socket, int client_req_id, char *content, long content_length)
-{
-    // Parse content into folderpath and name
-    char *folderpath = (char *)malloc(content_length + 1);
-    char *name = (char *)malloc(content_length + 1);
-    fprintf(stderr, "content: %s\n", content);
+// void handle_create_request(int client_socket, int client_req_id, char *content, long content_length)
+// {
+//     // Parse content into folderpath and name
+//     char *folderpath = (char *)malloc(content_length + 1);
+//     char *name = (char *)malloc(content_length + 1);
+//     fprintf(stderr, "content: %s\n", content);
 
-    char *saveptr;
-    char *exist_folder = strtok_r(content, "\n", &saveptr);
-    fprintf(stderr, "exist_folder: %s\n", exist_folder);
+//     char *saveptr;
+//     char *exist_folder = strtok_r(content, "\n", &saveptr);
+//     fprintf(stderr, "exist_folder: %s\n", exist_folder);
 
-    FileEntry *file = search_path(exist_folder, root);
-    if (file == NULL)
-    {
-        fprintf(stderr, "Folder does not exist\n");
-        send_error_response(client_socket, client_req_id, "Error: Folder does not exist\n");
-        return;
-    }
-    else if (file->is_folder == 0)
-    {
-        fprintf(stderr, "Path is not a folder\n");
-        send_error_response(client_socket, client_req_id, "Error: Path is not a folder\n");
-        return;
-    }
-    else
-    {
-        fprintf(stderr, "Folder exists\n");
-        char *to_create = strtok_r(NULL, "\n", &saveptr);
-        fprintf(stderr, "to_create: %s\n", to_create);
-        char file_path[4096];
-        snprintf(file_path, sizeof(file_path), "%s%s", exist_folder, to_create);
-        file_path[strlen(file_path)] = '\0';
-        if (to_create[strlen(to_create) - 1] == '/')
-        {
-            char success = '0';
-            int chosen_servers[3];
-            int num_chosen = 0;
-            choose_least_full_servers(chosen_servers, &num_chosen);
-            FileEntry *file = insert_path_forc(file_path, chosen_servers, num_chosen, root);
-            if (file != NULL)
-            {
-                success = '0';
-                file->is_folder = 1;
-            }
-            else
-            {
-                success = '1';
-            }
-            // send success response to client, 30 byte header, 1st byte is the success byte, 9 bytes request id, 20 bytes content length
-            char header[31]; // 30 bytes + null terminator
-            char req_id_str[10];
-            char content_length_str[21];
-            memset(header, 0, sizeof(header));
-            memset(req_id_str, 0, sizeof(req_id_str));
-            memset(content_length_str, 0, sizeof(content_length_str));
-            // add content length to content length string as character
-            snprintf(content_length_str, sizeof(content_length_str), "%d", 0);
-            fprintf(stderr, "content_length_str: %s\n", content_length_str);
-            header[0] = success;
-            // set request id string to client_req_id
-            snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
-            fprintf(stderr, "req_id_str: %s\n", req_id_str);
-            // set header to success byte, request id and content length
-            strncpy(&header[1], req_id_str, strlen(req_id_str));
-            strncpy(&header[10], content_length_str, strlen(content_length_str));
-            header[30] = '\n';
-            fprintf(stderr, "header: %s\n", header);
-            // send header to client
-            if (write_n_bytes(client_socket, header, 30) != 30)
-            {
-                fprintf(stderr, "Failed to send response to client\n");
-                return;
-            }
-        }
-        else
-        {
+//     FileEntry *file = search_path(exist_folder, root);
+//     if (file == NULL)
+//     {
+//         fprintf(stderr, "Folder does not exist\n");
+//         send_error_response(client_socket, client_req_id, "Error: Folder does not exist\n");
+//         return;
+//     }
+//     else if (file->is_folder == 0)
+//     {
+//         fprintf(stderr, "Path is not a folder\n");
+//         send_error_response(client_socket, client_req_id, "Error: Path is not a folder\n");
+//         return;
+//     }
+//     else
+//     {
+//         fprintf(stderr, "Folder exists\n");
+//         char *to_create = strtok_r(NULL, "\n", &saveptr);
+//         fprintf(stderr, "to_create: %s\n", to_create);
+//         char file_path[4096];
+//         snprintf(file_path, sizeof(file_path), "%s%s", exist_folder, to_create);
+//         file_path[strlen(file_path)] = '\0';
+//         if (to_create[strlen(to_create) - 1] == '/')
+//         {
+//             char success = '0';
+//             int chosen_servers[3];
+//             int num_chosen = 0;
+//             choose_least_full_servers(chosen_servers, &num_chosen);
+//             FileEntry *file = insert_path_forc(file_path, chosen_servers, num_chosen, root);
+//             if (file != NULL)
+//             {
+//                 success = '0';
+//                 file->is_folder = 1;
+//             }
+//             else
+//             {
+//                 success = '1';
+//             }
+//             // send success response to client, 30 byte header, 1st byte is the success byte, 9 bytes request id, 20 bytes content length
+//             char header[31]; // 30 bytes + null terminator
+//             char req_id_str[10];
+//             char content_length_str[21];
+//             memset(header, 0, sizeof(header));
+//             memset(req_id_str, 0, sizeof(req_id_str));
+//             memset(content_length_str, 0, sizeof(content_length_str));
+//             // add content length to content length string as character
+//             snprintf(content_length_str, sizeof(content_length_str), "%d", 0);
+//             fprintf(stderr, "content_length_str: %s\n", content_length_str);
+//             header[0] = success;
+//             // set request id string to client_req_id
+//             snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
+//             fprintf(stderr, "req_id_str: %s\n", req_id_str);
+//             // set header to success byte, request id and content length
+//             strncpy(&header[1], req_id_str, strlen(req_id_str));
+//             strncpy(&header[10], content_length_str, strlen(content_length_str));
+//             header[30] = '\n';
+//             fprintf(stderr, "header: %s\n", header);
+//             // send header to client
+//             if (write_n_bytes(client_socket, header, 30) != 30)
+//             {
+//                 fprintf(stderr, "Failed to send response to client\n");
+//                 return;
+//             }
+//         }
+//         else
+//         {
 
-            // set timestamp
-            time_t t = time(NULL);
-            struct tm tm = *localtime(&t);
-            char timestamp[20];
-            memset(timestamp, 0, sizeof(timestamp));
-            strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%S", &tm);
-            fprintf(stderr, "timestamp: %s\n", timestamp);
-            int chosen_servers[3];
-            int num_chosen = 0;
-            choose_least_full_servers(chosen_servers, &num_chosen);
-            FileEntry *file = insert_path_forc(file_path, chosen_servers, num_chosen, root);
-            file->is_folder = 0;
-            set_file_entry_timestamp(file, timestamp);
+//             // set timestamp
+//             time_t t = time(NULL);
+//             struct tm tm = *localtime(&t);
+//             char timestamp[20];
+//             memset(timestamp, 0, sizeof(timestamp));
+//             strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%S", &tm);
+//             fprintf(stderr, "timestamp: %s\n", timestamp);
+//             int chosen_servers[3];
+//             int num_chosen = 0;
+//             choose_least_full_servers(chosen_servers, &num_chosen);
+//             FileEntry *file = insert_path_forc(file_path, chosen_servers, num_chosen, root);
+//             file->is_folder = 0;
+//             set_file_entry_timestamp(file, timestamp);
 
-            char file_path[4096];
+//             char file_path[4096];
 
-            size_t folderpath_len = strlen(exist_folder);
-            size_t name_len = strlen(to_create);
-            if (folderpath_len + name_len + 1 >= sizeof(file_path))
-            {
-                fprintf(stderr, "Path too long\n");
-                send_error_response(client_socket, client_req_id, "Error: Path too long\n");
-                return;
-            }
-            snprintf(file_path, sizeof(file_path), "%s%s", exist_folder, to_create);
-            file_path[strlen(file_path)] = '\0';
-            fprintf(stderr, "file_path: %s\n", file_path);
-            size_t content_length = strlen(file_path) + 1 + strlen(timestamp);
+//             size_t folderpath_len = strlen(exist_folder);
+//             size_t name_len = strlen(to_create);
+//             if (folderpath_len + name_len + 1 >= sizeof(file_path))
+//             {
+//                 fprintf(stderr, "Path too long\n");
+//                 send_error_response(client_socket, client_req_id, "Error: Path too long\n");
+//                 return;
+//             }
+//             snprintf(file_path, sizeof(file_path), "%s%s", exist_folder, to_create);
+//             file_path[strlen(file_path)] = '\0';
+//             fprintf(stderr, "file_path: %s\n", file_path);
+//             size_t content_length = strlen(file_path) + 1 + strlen(timestamp);
 
-            char *content = malloc(content_length + 1);
-            if (content == NULL)
-            {
-                fprintf(stderr, "Failed to allocate memory for content\n");
-                send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
-                return;
-            }
+//             char *content = malloc(content_length + 1);
+//             if (content == NULL)
+//             {
+//                 fprintf(stderr, "Failed to allocate memory for content\n");
+//                 send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
+//                 return;
+//             }
 
-            strncpy(content, file_path, strlen(file_path));
-            content[strlen(file_path)] = '\n';
-            fprintf(stderr, "content: %s\n", content);
-            strncpy(content + strlen(content), timestamp, strlen(timestamp));
-            content[content_length] = '\n';
-            fprintf(stderr, "content: %s\n", content);
+//             strncpy(content, file_path, strlen(file_path));
+//             content[strlen(file_path)] = '\n';
+//             fprintf(stderr, "content: %s\n", content);
+//             strncpy(content + strlen(content), timestamp, strlen(timestamp));
+//             content[content_length] = '\n';
+//             fprintf(stderr, "content: %s\n", content);
 
-            char header[31]; // 30 bytes + null terminator
-            char req_id_str[10];
-            char content_length_str[21];
-            memset(header, 0, sizeof(header));
-            memset(req_id_str, 0, sizeof(req_id_str));
-            memset(content_length_str, 0, sizeof(content_length_str));
-            // add content length to content length string as character
-            snprintf(content_length_str, sizeof(content_length_str), "%ld", content_length);
-            fprintf(stderr, "content_length_str: %s\n", content_length_str);
+//             char header[31]; // 30 bytes + null terminator
+//             char req_id_str[10];
+//             char content_length_str[21];
+//             memset(header, 0, sizeof(header));
+//             memset(req_id_str, 0, sizeof(req_id_str));
+//             memset(content_length_str, 0, sizeof(content_length_str));
+//             // add content length to content length string as character
+//             snprintf(content_length_str, sizeof(content_length_str), "%ld", content_length);
+//             fprintf(stderr, "content_length_str: %s\n", content_length_str);
 
-            char operation_type = '6'; // '6' for CREATE
-            // send 30 bytes header: 1 byte operation type, 9 bytes request id, 20 bytes content length
-            // generate new content length that is length of filepath + new line + timestamp size  using strnc
+//             char operation_type = '6'; // '6' for CREATE
+//             // send 30 bytes header: 1 byte operation type, 9 bytes request id, 20 bytes content length
+//             // generate new content length that is length of filepath + new line + timestamp size  using strnc
 
-            // set global request id to req_id_str use strncpy, convert global_req_id to string
-            snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
-            fprintf(stderr, "req_id_str: %s\n", req_id_str);
+//             // set global request id to req_id_str use strncpy, convert global_req_id to string
+//             snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
+//             fprintf(stderr, "req_id_str: %s\n", req_id_str);
 
-            header[0] = operation_type;
-            strncpy(&header[1], req_id_str, strlen(req_id_str));
-            //
-            strncpy(&header[10], content_length_str, strlen(content_length_str));
-            header[30] = '\n';
-            // send request to the 3 least filled storage servers of the file entry
-            memset(chosen_servers, -1, sizeof(chosen_servers));
-            num_chosen = 0;
-            choose_least_full_servers(chosen_servers, &num_chosen);
+//             header[0] = operation_type;
+//             strncpy(&header[1], req_id_str, strlen(req_id_str));
+//             //
+//             strncpy(&header[10], content_length_str, strlen(content_length_str));
+//             header[30] = '\n';
+//             // send request to the 3 least filled storage servers of the file entry
+//             memset(chosen_servers, -1, sizeof(chosen_servers));
+//             num_chosen = 0;
+//             choose_least_full_servers(chosen_servers, &num_chosen);
 
-            if (num_chosen == 0)
-            {
-                send_error_response(client_socket, client_req_id, "No storage servers available\n");
-                return;
-            }
+//             if (num_chosen == 0)
+//             {
+//                 send_error_response(client_socket, client_req_id, "No storage servers available\n");
+//                 return;
+//             }
 
-            for (int i = 0; i < num_chosen; i++) // what if there are less than 3 ???
-            {
-                // send request to storage server
-                // send header along file path to the storage server
-                int ssid = chosen_servers[i];
-                StorageServerInfo ss_info = storage_servers[ssid];
-                // connect to storage server using IP and Port in the ssinfo using connect and sockaddr
-                struct sockaddr_in storage_server_addr;
-                storage_server_addr.sin_family = AF_INET;
-                storage_server_addr.sin_port = htons(ss_info.client_port);
-                storage_server_addr.sin_addr.s_addr = inet_addr(ss_info.ip_address);
-                int storage_server_socket = socket(AF_INET, SOCK_STREAM, 0);
-                // connect
-                if (storage_server_socket < 0)
-                {
-                    fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
-                    send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
-                    return;
-                }
-                if (connect(storage_server_socket, (struct sockaddr *)&storage_server_addr, sizeof(storage_server_addr)) < 0)
-                {
-                    fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
-                    send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
-                    return;
-                }
-                fprintf(stderr, "header %s\n", header);
-                if (write_n_bytes(storage_server_socket, header, 30) != 30)
-                {
+//             for (int i = 0; i < num_chosen; i++) // what if there are less than 3 ???
+//             {
+//                 // send request to storage server
+//                 // send header along file path to the storage server
+//                 int ssid = chosen_servers[i];
+//                 StorageServerInfo ss_info = storage_servers[ssid];
+//                 // connect to storage server using IP and Port in the ssinfo using connect and sockaddr
+//                 struct sockaddr_in storage_server_addr;
+//                 storage_server_addr.sin_family = AF_INET;
+//                 storage_server_addr.sin_port = htons(ss_info.client_port);
+//                 storage_server_addr.sin_addr.s_addr = inet_addr(ss_info.ip_address);
+//                 int storage_server_socket = socket(AF_INET, SOCK_STREAM, 0);
+//                 // connect
+//                 if (storage_server_socket < 0)
+//                 {
+//                     fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
+//                     send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
+//                     return;
+//                 }
+//                 if (connect(storage_server_socket, (struct sockaddr *)&storage_server_addr, sizeof(storage_server_addr)) < 0)
+//                 {
+//                     fprintf(stderr, "Failed to connect to storage server %d\n", ssid);
+//                     send_error_response(client_socket, client_req_id, "Failed to connect to storage server\n");
+//                     return;
+//                 }
+//                 fprintf(stderr, "header %s\n", header);
+//                 if (write_n_bytes(storage_server_socket, header, 30) != 30)
+//                 {
 
-                    fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
-                    send_error_response(client_socket, client_req_id, "Failed to send request to storage server\n");
-                    // close(storage_server_socket);
-                    return;
-                }
+//                     fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
+//                     send_error_response(client_socket, client_req_id, "Failed to send request to storage server\n");
+//                     // close(storage_server_socket);
+//                     return;
+//                 }
 
-                if (write_n_bytes(storage_server_socket, content, content_length) != (ssize_t)content_length)
-                {
-                    fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
-                    send_error_response(client_socket, client_req_id, "Failed to send request to storage server\n");
-                }
+//                 if (write_n_bytes(storage_server_socket, content, content_length) != (ssize_t)content_length)
+//                 {
+//                     fprintf(stderr, "Failed to send request to storage server %d\n", ssid);
+//                     send_error_response(client_socket, client_req_id, "Failed to send request to storage server\n");
+//                 }
 
-                // close(storage_server_socket);
-            }
-        }
-    }
-    // Prepare header
+//                 // close(storage_server_socket);
+//             }
+//         }
+//     }
+//     // Prepare header
 
-    // send header along file path to the storage server
+//     // send header along file path to the storage server
 
-    // char *content_copy = strdup(content);
-}
+//     // char *content_copy = strdup(content);
+// }
 
 int copy_file(char *srcpath, int src_socket, char *destfolder, char *dest_ip, int dest_port, int reqid)
 {
@@ -685,152 +686,152 @@ int copy_file(char *srcpath, int src_socket, char *destfolder, char *dest_ip, in
     return -1;
 }
 
-void handle_delete_request(int client_socket, int client_req_id, char *content, long content_length)
-{
-    // 1. Check that the last character is '\n'
-    if (content_length == 0 || content[content_length - 1] != '\n')
-    {
-        send_error_response(client_socket, client_req_id, "Error: Request must end with a newline character\n");
-        return;
-    }
+// void handle_delete_request(int client_socket, int client_req_id, char *content, long content_length)
+// {
+//     // 1. Check that the last character is '\n'
+//     if (content_length == 0 || content[content_length - 1] != '\n')
+//     {
+//         send_error_response(client_socket, client_req_id, "Error: Request must end with a newline character\n");
+//         return;
+//     }
 
-    // Remove the trailing '\n'
-    content[content_length - 1] = '\0';
-    content_length--;
+//     // Remove the trailing '\n'
+//     content[content_length - 1] = '\0';
+//     content_length--;
 
-    // remove the \n between folderpath and filename/foldername because format <foldername>\n<filename>
-    char *saveptr;
-    char *folderpath = strtok_r(content, "\n", &saveptr);
-    char *filename = strtok_r(NULL, "\n", &saveptr);
-    int len = strlen(filename) + strlen(folderpath) + 1;
+//     // remove the \n between folderpath and filename/foldername because format <foldername>\n<filename>
+//     char *saveptr;
+//     char *folderpath = strtok_r(content, "\n", &saveptr);
+//     char *filename = strtok_r(NULL, "\n", &saveptr);
+//     int len = strlen(filename) + strlen(folderpath) + 1;
 
-    // 2. Check if it's a valid path
-    // construct path as folderpath/filename
-    char path[len];
-    snprintf(path, sizeof(path), "%s%s", folderpath, filename);
-    path[len] = '\0';
-    pthread_mutex_lock(&trie_mutex);
-    FileEntry *entry = search_path(path, root);
-    pthread_mutex_unlock(&trie_mutex);
+//     // 2. Check if it's a valid path
+//     // construct path as folderpath/filename
+//     char path[len];
+//     snprintf(path, sizeof(path), "%s%s", folderpath, filename);
+//     path[len] = '\0';
+//     pthread_mutex_lock(&trie_mutex);
+//     FileEntry *entry = search_path(path, root);
+//     pthread_mutex_unlock(&trie_mutex);
 
-    if (entry == NULL)
-    {
-        send_error_response(client_socket, client_req_id, "Error: Path does not exist\n");
-        return;
-    }
+//     if (entry == NULL)
+//     {
+//         send_error_response(client_socket, client_req_id, "Error: Path does not exist\n");
+//         return;
+//     }
 
-    int is_folder = entry->is_folder;
+//     int is_folder = entry->is_folder;
 
 
-    // 4. Check if the path is '/' (home)
-    if (strcmp(path, "/") == 0)
-    {
-        send_error_response(client_socket, client_req_id, "Error: Cannot delete root directory\n");
-        return;
-    }
+//     // 4. Check if the path is '/' (home)
+//     if (strcmp(path, "/") == 0)
+//     {
+//         send_error_response(client_socket, client_req_id, "Error: Cannot delete root directory\n");
+//         return;
+//     }
 
-    int result = 0;
+//     int result = 0;
 
-    // delete
-    remove_path(path, root);
+//     // delete
+//     remove_path(path, root);
 
-    // Check if it's a file or a directory
-    if (is_folder == 0)
-    {
-        // send delete header request to all storage servers that have the file
-        for (int i = 0; i < 3; i++)
-        {
-            int ss_id = entry->ss_ids[i];
-            if (ss_id == -1)
-                continue;
+//     // Check if it's a file or a directory
+//     if (is_folder == 0)
+//     {
+//         // send delete header request to all storage servers that have the file
+//         for (int i = 0; i < 3; i++)
+//         {
+//             int ss_id = entry->ss_ids[i];
+//             if (ss_id == -1)
+//                 continue;
 
-            StorageServerInfo ss_info = storage_servers[ss_id];
+//             StorageServerInfo ss_info = storage_servers[ss_id];
 
-            int ss_socket = connect_to_storage_server(ss_info.ip_address, ss_info.client_port);
-            if (ss_socket < 0)
-            {
-                fprintf(stderr, "Failed to connect to storage server %d\n", ss_id);
-                continue;
-            }
+//             int ss_socket = connect_to_storage_server(ss_info.ip_address, ss_info.client_port);
+//             if (ss_socket < 0)
+//             {
+//                 fprintf(stderr, "Failed to connect to storage server %d\n", ss_id);
+//                 continue;
+//             }
 
-            // Prepare header
-            char header[31] = {0};
-            char req_id_str[10];
-            char content_length_str[21];
+//             // Prepare header
+//             char header[31] = {0};
+//             char req_id_str[10];
+//             char content_length_str[21];
 
-            snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
+//             snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
 
-            // combine filepath and folderpath to get absolute path
-            char abs_path[4096];
-            snprintf(abs_path, sizeof(abs_path), "%s%s\n", folderpath, filename);
-            snprintf(content_length_str, sizeof(content_length_str), "%020ld", strlen(abs_path));
+//             // combine filepath and folderpath to get absolute path
+//             char abs_path[4096];
+//             snprintf(abs_path, sizeof(abs_path), "%s%s\n", folderpath, filename);
+//             snprintf(content_length_str, sizeof(content_length_str), "%020ld", strlen(abs_path));
 
-            header[0] = '8';
-            strncpy(&header[1], req_id_str, 9);
-            strncpy(&header[10], content_length_str, 20);
-            header[30] = '\0';
-            fprintf(stderr, "header: %s\n", header);
+//             header[0] = '8';
+//             strncpy(&header[1], req_id_str, 9);
+//             strncpy(&header[10], content_length_str, 20);
+//             header[30] = '\0';
+//             fprintf(stderr, "header: %s\n", header);
 
-            // Send header and path
-            if (write_n_bytes(ss_socket, header, 30) != 30 ||
-                write_n_bytes(ss_socket, abs_path, strlen(abs_path) + 1) != (ssize_t)(strlen(abs_path) + 1))
-            {
-                fprintf(stderr, "Failed to send delete request to storage server %d\n", ss_id);
-                continue;
-            }
+//             // Send header and path
+//             if (write_n_bytes(ss_socket, header, 30) != 30 ||
+//                 write_n_bytes(ss_socket, abs_path, strlen(abs_path) + 1) != (ssize_t)(strlen(abs_path) + 1))
+//             {
+//                 fprintf(stderr, "Failed to send delete request to storage server %d\n", ss_id);
+//                 continue;
+//             }
 
-            // Read response
-            char response_header[31];
-            if (read_n_bytes(ss_socket, response_header, 30) != 30)
-            {
-                fprintf(stderr, "Failed to read response from storage server %d\n", ss_id);
-                continue;
-            }
+//             // Read response
+//             char response_header[31];
+//             if (read_n_bytes(ss_socket, response_header, 30) != 30)
+//             {
+//                 fprintf(stderr, "Failed to read response from storage server %d\n", ss_id);
+//                 continue;
+//             }
 
-            if (response_header[0] == '0') // '0' indicates success
-            {
-                result++;
-            }
-            else
-            {
-                fprintf(stderr, "Error response from storage server %d\n", ss_id);
-            }
-        }
-    }else{
-        char header[31] = {0};
-            char req_id_str[10];
-            char content_length_str[21];
+//             if (response_header[0] == '0') // '0' indicates success
+//             {
+//                 result++;
+//             }
+//             else
+//             {
+//                 fprintf(stderr, "Error response from storage server %d\n", ss_id);
+//             }
+//         }
+//     }else{
+//         char header[31] = {0};
+//             char req_id_str[10];
+//             char content_length_str[21];
 
-            snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
+//             snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
 
-            // combine filepath and folderpath to get absolute path
-            char abs_path[4096];
-            snprintf(abs_path, sizeof(abs_path), "%s%s\n", folderpath, filename);
-            snprintf(content_length_str, sizeof(content_length_str), "%020ld", strlen(abs_path));
+//             // combine filepath and folderpath to get absolute path
+//             char abs_path[4096];
+//             snprintf(abs_path, sizeof(abs_path), "%s%s\n", folderpath, filename);
+//             snprintf(content_length_str, sizeof(content_length_str), "%020ld", strlen(abs_path));
 
-            header[0] = '8';
-            strncpy(&header[1], req_id_str, 9);
-            strncpy(&header[10], content_length_str, 20);
-            header[30] = '\0';
-            fprintf(stderr, "header: %s\n", header);
+//             header[0] = '8';
+//             strncpy(&header[1], req_id_str, 9);
+//             strncpy(&header[10], content_length_str, 20);
+//             header[30] = '\0';
+//             fprintf(stderr, "header: %s\n", header);
 
-            // Send header and path
-            if (write_n_bytes(client_socket, header, 30) != 30 ||
-                write_n_bytes(client_socket, abs_path, strlen(abs_path) + 1) != (ssize_t)(strlen(abs_path) + 1))
-            {
-                fprintf(stderr, "error to client\n");
-            }
-    }
+//             // Send header and path
+//             if (write_n_bytes(client_socket, header, 30) != 30 ||
+//                 write_n_bytes(client_socket, abs_path, strlen(abs_path) + 1) != (ssize_t)(strlen(abs_path) + 1))
+//             {
+//                 fprintf(stderr, "error to client\n");
+//             }
+//     }
 
-    // if (result < 0)
-    // {
-    //     send_error_response(client_socket, client_req_id, "Error: Delete operation failed\n");
-    //     return;
-    // }
+//     // if (result < 0)
+//     // {
+//     //     send_error_response(client_socket, client_req_id, "Error: Delete operation failed\n");
+//     //     return;
+//     // }
 
-    // Send success response to client
-    // send_success(client_socket, client_req_id, "Delete operation successful\n");
-}
+//     // Send success response to client
+//     // send_success(client_socket, client_req_id, "Delete operation successful\n");
+// }
 
 // function to delete node from a trie by making parent point to NULL
 void delete_from_trie(char *path, struct TrieNode *root)
@@ -919,198 +920,198 @@ int connect_to_storage_server(const char *ip_address, int port)
 
     return ss_socket;
 }
-void handle_copy_request(int client_socket, int client_req_id, char *content, long content_length)
-{
+// void handle_copy_request(int client_socket, int client_req_id, char *content, long content_length)
+// {
 
-    char *folderpath, *srcpath, *saveptr;
-    srcpath = strtok_r(content, "\n", &saveptr);
-    folderpath = strtok_r(NULL, "\n", &saveptr);
-    if (folderpath[strlen(folderpath) - 1] == '\n')
-    {
-        folderpath[strlen(folderpath) - 1] = '\0';
-    }
-    if (folderpath[strlen(folderpath) - 1] != '/')
-    {
-        send_error_response(client_socket, client_req_id, "Error: Invalid folder path to copy into\n"); // destpath should be a folder
-        return;
-    }
-    if (search_path(folderpath, root) == NULL)
-    {
-        send_error_response(client_socket, client_req_id, "Error: Destination folder does not exist\n");
-        return;
-    }
-    if (search_path(srcpath, root) == NULL)
-    {
-        send_error_response(client_socket, client_req_id, "Error: Source path does not exist\n");
-        return;
-    }
-    if (srcpath[strlen(srcpath) - 1] == '/')
-    {
-        // copy folder
-    }
+//     char *folderpath, *srcpath, *saveptr;
+//     srcpath = strtok_r(content, "\n", &saveptr);
+//     folderpath = strtok_r(NULL, "\n", &saveptr);
+//     if (folderpath[strlen(folderpath) - 1] == '\n')
+//     {
+//         folderpath[strlen(folderpath) - 1] = '\0';
+//     }
+//     if (folderpath[strlen(folderpath) - 1] != '/')
+//     {
+//         send_error_response(client_socket, client_req_id, "Error: Invalid folder path to copy into\n"); // destpath should be a folder
+//         return;
+//     }
+//     if (search_path(folderpath, root) == NULL)
+//     {
+//         send_error_response(client_socket, client_req_id, "Error: Destination folder does not exist\n");
+//         return;
+//     }
+//     if (search_path(srcpath, root) == NULL)
+//     {
+//         send_error_response(client_socket, client_req_id, "Error: Source path does not exist\n");
+//         return;
+//     }
+//     if (srcpath[strlen(srcpath) - 1] == '/')
+//     {
+//         // copy folder
+//     }
 
-    else
-    {
-        // copy file
-        // copy_file(srcpath, folderpath);
-        StorageServerInfo source_info[3];
-        int ss_id[3];
-        int num_chosen;
-        choose_least_full_servers(ss_id, &num_chosen);
-        FileEntry *src_file = search_path(srcpath, root);
+//     else
+//     {
+//         // copy file
+//         // copy_file(srcpath, folderpath);
+//         StorageServerInfo source_info[3];
+//         int ss_id[3];
+//         int num_chosen;
+//         choose_least_full_servers(ss_id, &num_chosen);
+//         FileEntry *src_file = search_path(srcpath, root);
 
-        if (num_chosen <= 0)
-        {
-            send_error_response(client_socket, client_req_id, "Error: No storage servers available\n");
-            return;
-        }
-        int num_successful = 0;
+//         if (num_chosen <= 0)
+//         {
+//             send_error_response(client_socket, client_req_id, "Error: No storage servers available\n");
+//             return;
+//         }
+//         int num_successful = 0;
 
-        int ss_socket;
+//         int ss_socket;
 
-        for (int i = 0; i < num_chosen; i++)
-        {
-            // connect to storage server with id src_file->ss_ids[j]
+//         for (int i = 0; i < num_chosen; i++)
+//         {
+//             // connect to storage server with id src_file->ss_ids[j]
 
-            for (int j = 0; j < 3; j++)
-            {
-                if (src_file->ss_ids[j] <= 0)
-                {
-                    continue;
-                }
-                ss_socket = connect_to_storage_server(storage_servers[src_file->ss_ids[j]].ip_address, storage_servers[src_file->ss_ids[j]].port); // WRITE CODE FOR THIS
-                if (ss_socket < 0)
-                {
-                    continue;
-                }
+//             for (int j = 0; j < 3; j++)
+//             {
+//                 if (src_file->ss_ids[j] <= 0)
+//                 {
+//                     continue;
+//                 }
+//                 ss_socket = connect_to_storage_server(storage_servers[src_file->ss_ids[j]].ip_address, storage_servers[src_file->ss_ids[j]].port); // WRITE CODE FOR THIS
+//                 if (ss_socket < 0)
+//                 {
+//                     continue;
+//                 }
 
-                if (copy_file(srcpath, ss_socket, folderpath, storage_servers[ss_id[i]].ip_address, storage_servers[ss_id[i]].port, client_req_id) < 0)
-                {
-                    // failed to copy
-                    continue;
-                }
+//                 if (copy_file(srcpath, ss_socket, folderpath, storage_servers[ss_id[i]].ip_address, storage_servers[ss_id[i]].port, client_req_id) < 0)
+//                 {
+//                     // failed to copy
+//                     continue;
+//                 }
 
-                // now, we need to send from src_file->ss_ids[j] to ss_id[i]  // I am telling src_file->ss_ids[j] to copy src_file into ss_id[i] with destfilepath
-                // send to src_file->ss_ids[j]: (content)
-                // src_path
-                // dest_path (folderpath/filename)
-                // ssip ss_id[i]
-                // port ss_id[i]
+//                 // now, we need to send from src_file->ss_ids[j] to ss_id[i]  // I am telling src_file->ss_ids[j] to copy src_file into ss_id[i] with destfilepath
+//                 // send to src_file->ss_ids[j]: (content)
+//                 // src_path
+//                 // dest_path (folderpath/filename)
+//                 // ssip ss_id[i]
+//                 // port ss_id[i]
 
-                num_successful++;
-                break;
-            }
+//                 num_successful++;
+//                 break;
+//             }
 
-            // close(ss_socket);
-        }
-        if (num_successful == num_chosen)
-        {
-            char *filename = (char *)strrchr(srcpath, '/');
-            if (filename[strlen(filename) - 1] == '\n')
-            {
-                filename[strlen(filename) - 1] = '\0';
-            }
-            char *destpath = malloc(strlen(folderpath) + strlen(filename) + 1);
-            snprintf(destpath, strlen(folderpath) + strlen(filename), "%s%s", folderpath, filename);
-            destpath[strlen(folderpath) + strlen(filename)] = '\0';
-            insert_path_forc(destpath, ss_id, num_chosen, root);
-            fprintf(stderr, "File copied successfully\n");
-            if (send_success(client_socket, client_req_id, "File copied successfully\n") < 0)
-            {
-                fprintf(stderr, "Failed to send success message to client\n");
-                return;
-            }
-            return;
-        }
-        else
-        {
-            return send_error_response(client_socket, client_req_id, "Error: Failed to copy file to storage server\n");
-        }
-    }
+//             // close(ss_socket);
+//         }
+//         if (num_successful == num_chosen)
+//         {
+//             char *filename = (char *)strrchr(srcpath, '/');
+//             if (filename[strlen(filename) - 1] == '\n')
+//             {
+//                 filename[strlen(filename) - 1] = '\0';
+//             }
+//             char *destpath = malloc(strlen(folderpath) + strlen(filename) + 1);
+//             snprintf(destpath, strlen(folderpath) + strlen(filename), "%s%s", folderpath, filename);
+//             destpath[strlen(folderpath) + strlen(filename)] = '\0';
+//             insert_path_forc(destpath, ss_id, num_chosen, root);
+//             fprintf(stderr, "File copied successfully\n");
+//             if (send_success(client_socket, client_req_id, "File copied successfully\n") < 0)
+//             {
+//                 fprintf(stderr, "Failed to send success message to client\n");
+//                 return;
+//             }
+//             return;
+//         }
+//         else
+//         {
+//             return send_error_response(client_socket, client_req_id, "Error: Failed to copy file to storage server\n");
+//         }
+//     }
 
-    // check for last character being "\n"
-    // check if it is a valid path
-    // check if it is a file, if it is then send copy request to the three (or how many ever) storage servers along with the ssip and port number for the ss to copy it from, along with last modified time
-    // if it is a folder, find all the files under it in the trie, then send copy request for each of the files. for each of them insert an entry in the trie, once it is successfully copied to all three backup storage servers
-}
+//     // check for last character being "\n"
+//     // check if it is a valid path
+//     // check if it is a file, if it is then send copy request to the three (or how many ever) storage servers along with the ssip and port number for the ss to copy it from, along with last modified time
+//     // if it is a folder, find all the files under it in the trie, then send copy request for each of the files. for each of them insert an entry in the trie, once it is successfully copied to all three backup storage servers
+// }
 
 // FOR LIST
 
-void handle_list_request(int client_socket, int client_req_id, char *content, long content_length)
-{
-    // Ensure the content is null-terminated
-    char *folder_path = malloc(content_length + 1);
-    memcpy(folder_path, "\0", content_length + 1);
-    if (!folder_path)
-    {
-        send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
-        return;
-    }
-    memcpy(folder_path, content, content_length);
-    folder_path[content_length] = '\0';
-    // Find the folder node in the trie
-    TrieNode *folder_node = search_trie_node(folder_path, root);
-    if (folder_node == NULL)
-    {
-        send_error_response(client_socket, client_req_id, "Error: Folder does not exist\n");
-        free(folder_path);
-        return;
-    }
+// void handle_list_request(int client_socket, int client_req_id, char *content, long content_length)
+// {
+//     // Ensure the content is null-terminated
+//     char *folder_path = malloc(content_length + 1);
+//     memcpy(folder_path, "\0", content_length + 1);
+//     if (!folder_path)
+//     {
+//         send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
+//         return;
+//     }
+//     memcpy(folder_path, content, content_length);
+//     folder_path[content_length] = '\0';
+//     // Find the folder node in the trie
+//     TrieNode *folder_node = search_trie_node(folder_path, root);
+//     if (folder_node == NULL)
+//     {
+//         send_error_response(client_socket, client_req_id, "Error: Folder does not exist\n");
+//         free(folder_path);
+//         return;
+//     }
 
-    // Collect all paths under the folder
-    char **paths = NULL;
-    size_t num_paths = 0;
-    list_paths(folder_node, folder_path, &paths, &num_paths);
+//     // Collect all paths under the folder
+//     char **paths = NULL;
+//     size_t num_paths = 0;
+//     list_paths(folder_node, folder_path, &paths, &num_paths);
 
-    // Prepare the response content
-    size_t response_content_length = 0;
-    for (size_t i = 0; i < num_paths; i++)
-    {
-        response_content_length += strlen(paths[i]) + 1; // +1 for newline
-    }
+//     // Prepare the response content
+//     size_t response_content_length = 0;
+//     for (size_t i = 0; i < num_paths; i++)
+//     {
+//         response_content_length += strlen(paths[i]) + 1; // +1 for newline
+//     }
 
-    char *response_content = malloc(response_content_length + 1); // +1 for null-terminator
-    if (!response_content)
-    {
-        send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
-        free(folder_path);
-        for (size_t i = 0; i < num_paths; i++)
-            free(paths[i]);
-        free(paths);
-        return;
-    }
+//     char *response_content = malloc(response_content_length + 1); // +1 for null-terminator
+//     if (!response_content)
+//     {
+//         send_error_response(client_socket, client_req_id, "Error: Memory allocation failed\n");
+//         free(folder_path);
+//         for (size_t i = 0; i < num_paths; i++)
+//             free(paths[i]);
+//         free(paths);
+//         return;
+//     }
 
-    response_content[0] = '\0';
-    for (size_t i = 0; i < num_paths; i++)
-    {
-        strcat(response_content, paths[i]);
-        strcat(response_content, "\n");
-        free(paths[i]);
-    }
-    free(paths);
+//     response_content[0] = '\0';
+//     for (size_t i = 0; i < num_paths; i++)
+//     {
+//         strcat(response_content, paths[i]);
+//         strcat(response_content, "\n");
+//         free(paths[i]);
+//     }
+//     free(paths);
 
-    // Prepare the response header
-    char header[31];
-    char req_id_str[10];
-    char content_length_str[21];
-    snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
-    snprintf(content_length_str, sizeof(content_length_str), "%020zu", response_content_length);
+//     // Prepare the response header
+//     char header[31];
+//     char req_id_str[10];
+//     char content_length_str[21];
+//     snprintf(req_id_str, sizeof(req_id_str), "%09d", client_req_id);
+//     snprintf(content_length_str, sizeof(content_length_str), "%020zu", response_content_length);
 
-    header[0] = '0'; // '0' indicates success
-    memcpy(&header[1], req_id_str, 9);
-    memcpy(&header[10], content_length_str, 20);
-    header[30] = '\0';
+//     header[0] = '0'; // '0' indicates success
+//     memcpy(&header[1], req_id_str, 9);
+//     memcpy(&header[10], content_length_str, 20);
+//     header[30] = '\0';
 
-    // Send the response header and content to the client
-    if (write_n_bytes(client_socket, header, 30) != 30 ||
-        write_n_bytes(client_socket, response_content, response_content_length) != (ssize_t)response_content_length)
-    {
-        fprintf(stderr, "Failed to send response to client\n");
-    }
+//     // Send the response header and content to the client
+//     if (write_n_bytes(client_socket, header, 30) != 30 ||
+//         write_n_bytes(client_socket, response_content, response_content_length) != (ssize_t)response_content_length)
+//     {
+//         fprintf(stderr, "Failed to send response to client\n");
+//     }
 
-    free(response_content);
-    free(folder_path);
-}
+//     free(response_content);
+//     free(folder_path);
+// }
 
 void collect_paths(TrieNode *node, char *current_path, int depth, char ***output, size_t *output_length)
 {
