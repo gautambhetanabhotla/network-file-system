@@ -57,6 +57,7 @@ enum exit_status {
     SUCCESS,                // Request completed successfully.
     ACK,                    // Request acknowledged. The server may or may not work on it immediately.
     E_FILE_DOESNT_EXIST,    // File doesn't exist.
+    E_INVALID_FILE,         // The file is not valid or corrupted.
     E_INCOMPLETE_WRITE,     // Incomplete write operation.
     E_FILE_ALREADY_EXISTS,  // File already exists.
     E_WRONG_SS,             // The requested file path doesn't exist on this storage server.
