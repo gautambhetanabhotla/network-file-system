@@ -1,5 +1,5 @@
 #include "files.h"
-#include "requests.h"
+#include "storageserver.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -12,6 +12,13 @@ struct file** file_entries = NULL;
 unsigned long long int n_file_entries = 0;
 sem_t n_file_sem; // This lock must be held when modifying the file entries.
 
+/**
+ * Creates a file entry.
+ * @param vpath The virtual path of the file.
+ * @param rpath The real path of the file, that is, the path on the storage server.
+ * @param mtime The last modification time of the file.
+ * @return A pointer to the newly created file entry.
+ */
 struct file* make_file_entry(char* vpath, char* rpath, char* mtime) {
     struct file* entry = (struct file*)malloc(sizeof(struct file));
     if(entry == NULL) {
@@ -38,6 +45,14 @@ struct trie_node* create_trie_node() {
     return node;
 }
 
+/**
+ * Adds a file entry to the trie for fast access.
+ * @param vpath The virtual path of the file.
+ * @param rpath The real path of the file.
+ * @param mtime The last modification time of the file.
+ * @param toFile If true, the entry is also added to paths.txt.
+ * Returns a pointer to the file entry if successful, NULL if the entry already exists.
+ */
 struct file* add_file_entry(char* vpath, char* rpath, char* mtime, bool toFile) {
     // Adds a file entry to the trie for fast access.
     if(!trieRoot) trieRoot = create_trie_node();
@@ -77,6 +92,7 @@ struct file* get_file(char* vpath) {
 
 int remove_file_entry(char* vpath) {
     // Remove a file entry from the trie.
+    // TODO: actually remove it from the trie.
     if (!trieRoot) trieRoot = create_trie_node();
     struct trie_node *current = trieRoot;
     for (int i = 0; vpath[i]; i++) {
