@@ -19,11 +19,28 @@ int get_new_request_id() {
 
 void request_to_string(request_header* req) {
     char* request_type_strings[] = {
-        "", "READ", "WRITE", "STREAM", "INFO", "LIST", "CREATE", "COPY", "DELETE",
-        "HELLO_FROM_CLIENT", "HELLO_FROM_SS", "SYNC_BACK"
+        "",
+        "READ",
+        "WRITE",
+        "STREAM",
+        "INFO",
+        "LIST",
+        "CREATE",
+        "COPY",
+        "DELETE",
+        "HELLO_FROM_CLIENT",
+        "HELLO_FROM_SS",
+        "SYNC_BACK"
     };
-    fprintf(stderr, "REQUEST %lu: %s\nContent length: %lu\n%s\n%s", req->id, request_type_strings[req->type],
-            req->contentLength, req->paths[0], req->paths[1]);
+    fprintf(
+        stderr,
+        "REQUEST %lu: %s\nContent length: %lu\n%s\n%s",
+        req->id,
+        request_type_strings[req->type],
+        req->contentLength,
+        req->paths[0],
+        req->paths[1]
+    );
 }
 
 /**
@@ -39,7 +56,6 @@ void request_to_string(request_header* req) {
  * @param port The port number of the client or server to which the response is sent.
  */
 void respond(int fd1, int fd2, enum exit_status status, int requestID, long contentLength, char* ip, uint16_t port) {
-    char* exitstatusstrings[] = {"success", "acknowledge", "file doesn't exist", "incomplete write", "file already exists", "nm chose the wrong ss", "an error from SS's side", "connection refused"};
     struct response_header header = {requestID, contentLength, status};
     if(ip) strncpy(header.ip, ip, INET_ADDRSTRLEN - 1);
     header.ip[INET_ADDRSTRLEN - 1] = '\0';
@@ -60,18 +76,23 @@ void respond(int fd1, int fd2, enum exit_status status, int requestID, long cont
  * @param ports An array of two integers representing the ports involved in the request.
  */
 void request(int fd1, int fd2, enum request_type type, long contentLength, char** paths, char** ips, uint16_t* ports) {
-    request_header header = {get_new_request_id(), contentLength, type};
+    request_header header = {
+        get_new_request_id(),
+        contentLength,
+        type
+    };
     if(paths && paths[0]) strncpy(header.paths[0], paths[0], PATH_MAX - 1);
-    if(ips && ips[0]) strncpy(header.ip[0], ips[0], INET_ADDRSTRLEN - 1);
-    header.ip[0][INET_ADDRSTRLEN - 1] = '\0';
-    header.port[0] = ports[0];
     if(paths && paths[1]) strncpy(header.paths[1], paths[1], PATH_MAX - 1);
-    if(ips && ips[1]) strncpy(header.ip[1], ips[1], INET_ADDRSTRLEN - 1);
-    header.ip[1][INET_ADDRSTRLEN - 1] = '\0';
-    header.port[1] = ports[1];
     header.paths[0][PATH_MAX - 1] = '\0';
-    // strncpy(header.paths[1], paths[1], PATH_MAX - 1);
     header.paths[1][PATH_MAX - 1] = '\0';
+    if(ips && ips[0]) strncpy(header.ip[0], ips[0], INET_ADDRSTRLEN - 1);
+    if(ips && ips[1]) strncpy(header.ip[1], ips[1], INET_ADDRSTRLEN - 1);
+    header.ip[0][INET_ADDRSTRLEN - 1] = '\0';
+    header.ip[1][INET_ADDRSTRLEN - 1] = '\0';
+    if (ports) {
+        header.port[0] = ports[0];
+        header.port[1] = ports[1];
+    }
     if(fd1 != -1) send(fd1, &header, sizeof(header), 0);
     if(fd2 != -1) send(fd2, &header, sizeof(header), 0);
 }
@@ -93,4 +114,26 @@ int connect_with_ip_port(const char* ip, uint16_t port) {
         return -1;
     }
     return sockfd;
+}
+
+void response_to_string(response_header* res) {
+    char* exitstatusstrings[] = {
+        "success",
+        "acknowledged",
+        "file doesn't exist",
+        "incomplete write",
+        "file already exists",
+        "nm chose the wrong ss",
+        "an error from SS's side",
+        "connection refused"
+    };
+    fprintf(
+        stderr,
+        "Response for request %lu:\nContent length: %lu\nStatus: %s\nIP: %s\nPort: %d\n",
+        res->requestID,
+        res->contentLength,
+        exitstatusstrings[res->status],
+        res->ip,
+        res->port
+    );
 }
