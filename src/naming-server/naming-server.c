@@ -444,7 +444,7 @@ int delete_file(const char *path, FileEntry *entry, int client_req_id)
 //     fprintf(stderr, "exist_folder: %s\n", exist_folder);
 
 //     FileEntry *file = search_path(exist_folder, root);
-//     if (file == NULL)
+//     if (file == NULL) kkkk
 //     {
 //         fprintf(stderr, "Folder does not exist\n");
 //         send_error_response(client_socket, client_req_id, "Error: Folder does not exist\n");
