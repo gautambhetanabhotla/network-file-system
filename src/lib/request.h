@@ -62,7 +62,8 @@ enum exit_status {
     E_FILE_ALREADY_EXISTS,  // File already exists.
     E_WRONG_SS,             // The requested file path doesn't exist on this storage server.
     E_FAULTY_SS,            // Something went wrong on the storage server's side.
-    E_CONN_REFUSED          // Connection refused.
+    E_CONN_REFUSED,          // Connection refused.
+    E_INVALID_REQUEST        // Invalid request type or format.
 };
 
 typedef struct response_header {
