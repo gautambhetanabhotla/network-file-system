@@ -242,6 +242,7 @@ void handle_rsi_request(int client_socket, int client_req_id, char *path, enum r
         }
         // Get storage server information
         // check first online storage server
+        //ahhh
         int id = -1;
         for (int i = 0; i < 3; i++)
         {
