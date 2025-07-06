@@ -67,7 +67,7 @@ ssize_t write_n_bytes(int socket_fd, const void *buffer, size_t n)
 // Function to send an error response to the client
 void send_error_response(int client_socket, int req_id, enum exit_status status)
 {
-    respond(client_socket, NULL, status, req_id, 0, NULL, 0);
+    respond(client_socket, -1, status, req_id, 0, NULL, 0);
 }
 
 void send_port_ip(int client_socket, int port, char *ip)
@@ -263,12 +263,12 @@ void handle_rsi_request(int client_socket, int client_req_id, char *path, enum r
         snprintf(response_content, sizeof(response_content), "%s\n%d\n", ss_info.ip_address, ss_info.client_port);
         size_t response_content_length = strlen(response_content);
 
-        respond(client_socket, NULL, SUCCESS, client_req_id, 0, ss_info.ip_address, ss_info.client_port);
+        respond(client_socket, -1, SUCCESS, client_req_id, 0, ss_info.ip_address, ss_info.client_port);
 
         fprintf(stderr, "Sent storage server info to client: IP=%s, Port=%d\n", ss_info.ip_address, ss_info.client_port);
     }
 
-    fprintf(stderr, "Handled rsi request %d %s %s\n", client_req_id, path, type);
+    fprintf(stderr, "Handled rsi request %d %s %d\n", client_req_id, path, type);
 }
 
 // void handle_write_request(int client_socket, int client_req_id, char* content, long content_length){
@@ -1574,12 +1574,12 @@ void handle_client(int client_socket, request_header* header)
         fprintf(stderr, "client_req_id: %ld\n", client_req_id);
 
         char* paths[2] = {NULL, NULL};
-        if(header->paths[0][0])
+        if(header->paths[0][0] != '\0')
         {
             fprintf(stderr, "path 0: %s\n", header->paths[0]);
             paths[0] = header->paths[0];
         }
-        if(header->paths[1][0])
+        if(header->paths[1][0] != '\0')
         {
             fprintf(stderr, "path 1: %s\n", header->paths[1]);
             paths[1] = header->paths[1];
@@ -1633,7 +1633,7 @@ void handle_client(int client_socket, request_header* header)
             // fprintf(stderr, "tokenised content: %s\n", content);
             // content_length = strlen(content);
             // fprintf(stderr, "content_length: %ld\n", content_length);
-            char* path = header->paths[0][0] ? header->paths[0][0]: NULL;
+            char* path = header->paths[0];
             fprintf(stderr, "path in request: %s\n", path);
             handle_rsi_request(client_socket, client_req_id, path, request_type);
         }
@@ -1668,7 +1668,7 @@ void handle_client(int client_socket, request_header* header)
         else
         {
             fprintf(stderr, "Invalid request type received: %c\n", request_type);
-            send_error_response(client_socket, client_req_id, "Error: Invalid request type\n");
+            send_error_response(client_socket, client_req_id, E_INVALID_REQUEST);
         }
         // free(content);
     }

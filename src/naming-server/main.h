@@ -17,6 +17,7 @@
 #include <time.h>
 #include <fcntl.h>
 #include <sys/socket.h>
+#include "../lib/request.h"
 
 #define MAX_LEN 1024
 #define CACHE_MAX_SIZE 100
@@ -132,7 +133,7 @@ void update_registry(StorageServerInfo *ss_info);
 void send_error(int socket_fd, ErrorCode code, const char *message);
 void send_ack(int socket_fd, const char *message);
 int register_storage_server(const char *ip, int port_c, int port_ns);
-void handle_client(int client_socket, char initial_request_type);
+void handle_client(int client_socket, request_header *header);
 void signal_handler(int sig);
 TrieNode *create_trie_node();
 FileEntry* search_path(const char *path, TrieNode *root);
